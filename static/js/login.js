@@ -137,7 +137,7 @@ window.register = async function(event) {
         
         // Отправляем письмо с подтверждением
         await user.sendEmailVerification({
-            url: 'http://localhost:8080/login',
+            url: 'http://net-cloud/login',
             handleCodeInApp: true
         });
         
@@ -180,4 +180,5 @@ auth.onAuthStateChanged(async (user) => {
         
         window.location.href = '/';
     }
+
 });
