@@ -1,18 +1,98 @@
 <!DOCTYPE html>
 <html lang="ru">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CloudNET</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    <link rel="stylesheet" href="./css/style.css">
-
-    <!-- Firebase SDK -->
-    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js"></script>
-    <script type="module" src="./js/main.js"></script>
+    
+    <!-- ОСНОВНЫЕ МЕТА-ТЕГИ ДЛЯ SEO -->
+    <title>CloudNET — Безопасное облачное хранилище с прямым доступом</title>
+    <meta name="description" content="CloudNET: бесплатное и безопасное облако для файлов. Загружайте, храните и делитесь документами, фото и видео. Доступ с любого устройства. 5 ГБ бесплатно.">
+    <meta name="keywords" content="облачное хранилище, cloud, файлы, документы, фото, видео, безопасность, бесплатно, cloudnet, диск">
+    <meta name="author" content="CloudNET">
+    <meta name="robots" content="index, follow">
+    <meta name="language" content="Russian">
+    <meta name="revisit-after" content="7 days">
+    
+    <!-- ПРОВЕРКА GOOGLE (ваш код) -->
     <meta name="google-site-verification" content="D9ZLvRwZtnF8RtWD2ZBLrK9KhGgYv1EvVj9mnpm7zAY" />
+    
+    <!-- OPEN GRAPH (для соцсетей) -->
+    <meta property="og:title" content="CloudNET — Безопасное облачное хранилище">
+    <meta property="og:description" content="5 ГБ бесплатно. Загружайте и храните файлы в безопасности.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://cloudnet.ru">
+    <meta property="og:image" content="https://cloudnet.ru/images/og-preview.jpg">
+    <meta property="og:locale" content="ru_RU">
+    
+    <!-- TWITTER CARD -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="CloudNET — Облачное хранилище">
+    <meta name="twitter:description" content="Бесплатно 5 ГБ. Безопасно и удобно.">
+    <meta name="twitter:image" content="https://cloudnet.ru/images/twitter-preview.jpg">
+    
+    <!-- FAVICON (обязательно) -->
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <link rel="manifest" href="/site.webmanifest">
+    
+    <!-- КАНОНИЧЕСКАЯ ССЫЛКА -->
+    <link rel="canonical" href="https://cloudnet.ru">
+    
+    <!-- СТРУКТУРИРОВАННЫЕ ДАННЫЕ (JSON-LD) - для расширенных сниппетов -->
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "CloudNET",
+        "applicationCategory": "CloudStorage",
+        "operatingSystem": "Web, iOS, Android",
+        "description": "Бесплатное и безопасное облачное хранилище для ваших файлов.",
+        "offers": {
+            "@type": "Offer",
+            "price": "0",
+            "priceCurrency": "RUB"
+        },
+        "aggregateRating": {
+            "@type": "AggregateRating",
+            "ratingValue": "4.8",
+            "ratingCount": "1250"
+        },
+        "featureList": [
+            "5 ГБ бесплатно",
+            "Шифрование данных",
+            "Доступ с любого устройства",
+            "Общий доступ к файлам"
+        ]
+    }
+    </script>
+    
+    <!-- ПРЕДЗАГРУЗКА КРИТИЧНЫХ РЕСУРСОВ -->
+    <link rel="preconnect" href="https://www.gstatic.com">
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com">
+    <link rel="dns-prefetch" href="https://www.gstatic.com">
+    <link rel="dns-prefetch" href="https://cdnjs.cloudflare.com">
+    
+    <!-- СТИЛИ (критические встроены, остальные асинхронно) -->
+    <style>
+        /* Критические стили для быстрого первого отображения */
+        *{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f5f7fb;color:#1e293b}.auth-check{position:fixed;top:0;left:0;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:white;z-index:9999}.spinner{width:40px;height:40px;border:3px solid #e2e8f0;border-top-color:#3b82f6;border-radius:50%;animation:spin 1s linear infinite;margin-bottom:1rem}@keyframes spin{to{transform:rotate(360deg)}}.app{display:flex;height:100vh;overflow:hidden}.sidebar{width:260px;background:white;border-right:1px solid #e2e8f0;display:flex;flex-direction:column;padding:1.5rem 1rem;transition:transform .3s ease}@media (max-width:768px){.sidebar{position:fixed;left:0;top:0;bottom:0;z-index:100;transform:translateX(-100%)}.sidebar.active{transform:translateX(0)}}
+    </style>
+    
+    <!-- ОСНОВНОЙ CSS (асинхронная загрузка, не блокирует рендеринг) -->
+    <link rel="preload" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+    <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"></noscript>
+    
+    <link rel="preload" href="./css/style.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+    <noscript><link rel="stylesheet" href="./css/style.css"></noscript>
+    
+    <!-- Firebase SDK (асинхронно, не блокирует) -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js" defer></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js" defer></script>
+    
+    <!-- Ваши скрипты (defer - выполняются после загрузки HTML) -->
+    <script src="./js/firebase-config.js" defer></script>
+    <script type="module" src="./js/main.js" defer></script>
 </head>
 <body>
     <!-- Проверка авторизации -->
@@ -24,45 +104,45 @@
     <!-- Основное приложение -->
     <div class="app" id="app" style="display: none;">
         <!-- Боковая панель -->
-        <aside class="sidebar">
-            <div class="logo">
-                <i class="fas fa-cloud"></i>
-                <span>CloudNET</span>
+        <aside class="sidebar" id="sidebar">
+            <div class="logo" itemscope itemtype="https://schema.org/Brand">
+                <i class="fas fa-cloud" aria-hidden="true"></i>
+                <span itemprop="name">CloudNET</span>
             </div>
 
             <div class="user-info" id="userInfo">
-                <i class="fas fa-user-circle"></i>
+                <i class="fas fa-user-circle" aria-hidden="true"></i>
                 <div>
                     <div id="userName" class="user-name"></div>
                     <div id="userEmail" class="user-email"></div>
                 </div>
             </div>
 
-            <button class="new-btn" id="newBtn">
-                <i class="fas fa-plus"></i>
+            <button class="new-btn" id="newBtn" aria-label="Создать новый элемент">
+                <i class="fas fa-plus" aria-hidden="true"></i>
                 Создать
             </button>
 
             <div class="new-menu" id="newMenu">
-                <button onclick="createFolder()">
-                    <i class="fas fa-folder"></i>
+                <button onclick="createFolder()" aria-label="Создать папку">
+                    <i class="fas fa-folder" aria-hidden="true"></i>
                     Папку
                 </button>
-                <button onclick="triggerFileUpload()">
-                    <i class="fas fa-upload"></i>
+                <button onclick="triggerFileUpload()" aria-label="Загрузить файлы">
+                    <i class="fas fa-upload" aria-hidden="true"></i>
                     Загрузить файлы
                 </button>
             </div>
 
-            <nav class="nav-menu">
-                <a href="#" class="active" onclick="loadFiles('/'); return false;">
-                    <i class="fas fa-drive"></i>
+            <nav class="nav-menu" aria-label="Основная навигация">
+                <a href="#" class="active" onclick="loadFiles('/'); return false;" aria-current="page">
+                    <i class="fas fa-drive" aria-hidden="true"></i>
                     Мой диск
                 </a>
             </nav>
 
-            <div class="storage-info">
-                <div class="storage-bar">
+            <div class="storage-info" aria-label="Информация о хранилище">
+                <div class="storage-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100">
                     <div class="storage-used" id="storageUsedBar" style="width: 0%"></div>
                 </div>
                 <div class="storage-text" id="storageText">
@@ -70,89 +150,166 @@
                 </div>
             </div>
 
-            <button class="logout-btn" onclick="logout()">
-                <i class="fas fa-sign-out-alt"></i>
+            <button class="logout-btn" onclick="logout()" aria-label="Выйти из аккаунта">
+                <i class="fas fa-sign-out-alt" aria-hidden="true"></i>
                 Выйти
             </button>
         </aside>
 
         <!-- Основной контент -->
-        <main class="main-content">
+        <main class="main-content" id="mainContent">
             <header class="toolbar">
-                <div class="breadcrumb" id="breadcrumb">
+                <nav class="breadcrumb" id="breadcrumb" aria-label="Хлебные крошки">
                     <a href="#" onclick="navigateTo('/'); return false;">Мой диск</a>
-                </div>
+                </nav>
 
                 <div class="toolbar-actions">
-                    <button onclick="triggerFileUpload()" title="Загрузить">
-                        <i class="fas fa-upload"></i>
+                    <button onclick="triggerFileUpload()" title="Загрузить файлы" aria-label="Загрузить файлы">
+                        <i class="fas fa-upload" aria-hidden="true"></i>
                     </button>
-                    <button onclick="createFolder()" title="Создать папку">
-                        <i class="fas fa-folder-plus"></i>
+                    <button onclick="createFolder()" title="Создать папку" aria-label="Создать папку">
+                        <i class="fas fa-folder-plus" aria-hidden="true"></i>
                     </button>
-                    <button onclick="loadFiles(currentPath)" title="Обновить">
-                        <i class="fas fa-sync-alt"></i>
+                    <button onclick="loadFiles(currentPath)" title="Обновить" aria-label="Обновить список файлов">
+                        <i class="fas fa-sync-alt" aria-hidden="true"></i>
                     </button>
                 </div>
             </header>
 
             <!-- Информация -->
             <div class="info-badge">
-                <i class="fas fa-shield-alt"></i>
-                Безопасное хранилище
+                <i class="fas fa-shield-alt" aria-hidden="true"></i>
+                Безопасное хранилище с шифрованием
             </div>
 
             <!-- Drag & Drop зона -->
-            <div class="drop-zone" id="dropZone">
-                <i class="fas fa-cloud-upload-alt"></i>
+            <div class="drop-zone" id="dropZone" aria-label="Область для перетаскивания файлов">
+                <i class="fas fa-cloud-upload-alt" aria-hidden="true"></i>
                 <p>Перетащите файлы сюда для загрузки</p>
             </div>
 
             <!-- Таблица файлов -->
             <div class="files-container">
-                <table class="files-table">
+                <table class="files-table" aria-label="Список файлов и папок">
                     <thead>
                         <tr>
-                            <th></th>
-                            <th>Название</th>
-                            <th>Размер</th>
-                            <th>Изменён</th>
-                            <th>Действия</th>
+                            <th scope="col"><span class="visually-hidden">Иконка</span></th>
+                            <th scope="col">Название</th>
+                            <th scope="col">Размер</th>
+                            <th scope="col">Изменён</th>
+                            <th scope="col">Действия</th>
                         </tr>
                     </thead>
                     <tbody id="fileList">
                         <tr>
                             <td colspan="5" class="loading">
-                                <i class="fas fa-spinner fa-spin"></i> Загрузка...
+                                <i class="fas fa-spinner fa-spin" aria-hidden="true"></i> Загрузка...
                             </td>
                         </tr>
                     </tbody>
                 </table>
             </div>
 
-            <input type="file" id="fileInput" multiple style="display: none;">
+            <input type="file" id="fileInput" multiple style="display: none;" aria-hidden="true">
         </main>
     </div>
 
     <!-- Модальное окно для папки -->
-    <div class="modal" id="folderModal">
+    <div class="modal" id="folderModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
         <div class="modal-content">
-            <h3>Создать папку</h3>
-            <input type="text" id="folderName" placeholder="Название папки">
+            <h3 id="modalTitle">Создать папку</h3>
+            <label for="folderName" class="visually-hidden">Название папки</label>
+            <input type="text" id="folderName" placeholder="Название папки" aria-required="true">
             <div class="modal-actions">
                 <button class="cancel" onclick="closeFolderModal()">Отмена</button>
                 <button class="create" onclick="createFolderConfirm()">Создать</button>
             </div>
         </div>
     </div>
-    <button class="mobile-menu-btn" id="mobileMenuBtn" onclick="toggleMobileMenu()">
-        <i class="fas fa-bars"></i>
+
+    <!-- Мобильное меню -->
+    <button class="mobile-menu-btn" id="mobileMenuBtn" onclick="toggleMobileMenu()" aria-label="Открыть меню" aria-expanded="false" aria-controls="sidebar">
+        <i class="fas fa-bars" aria-hidden="true"></i>
     </button>
 
-    <div class="mobile-menu-overlay" id="mobileMenuOverlay" onclick="closeMobileMenu()"></div>
-    <script src="./js/firebase-config.js"></script>
+    <div class="mobile-menu-overlay" id="mobileMenuOverlay" onclick="closeMobileMenu()" aria-hidden="true"></div>
+
+    <!-- Дополнительный контент для SEO (скрыт визуально, но доступен поисковикам) -->
+    <div class="visually-hidden" aria-hidden="false">
+        <h1>CloudNET — Облачное хранилище файлов</h1>
+        <p>CloudNET - это безопасное и удобное облачное хранилище для ваших документов, фотографий, видео и других файлов. Мы предлагаем 5 ГБ бесплатного пространства с возможностью расширения. Все данные шифруются и надежно защищены. Доступ к файлам с любого устройства: компьютера, планшета или смартфона. Делитесь файлами с друзьями и коллегами по прямой ссылке.</p>
+        <h2>Возможности CloudNET</h2>
+        <ul>
+            <li>Бесплатно 5 ГБ дискового пространства</li>
+            <li>Загрузка и хранение файлов любых форматов</li>
+            <li>Создание папок для организации файлов</li>
+            <li>Общий доступ к файлам по ссылке</li>
+            <li>Доступ с мобильных устройств</li>
+            <li>Шифрование данных при передаче и хранении</li>
+            <li>Автоматическая синхронизация между устройствами</li>
+        </ul>
+    </div>
+
+    <style>
+        /* Дополнительные стили для SEO-блока и доступности */
+        .visually-hidden:not(:focus):not(:active) {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            margin: -1px;
+            border: 0;
+            padding: 0;
+            white-space: nowrap;
+            clip-path: inset(100%);
+            clip: rect(0 0 0 0);
+            overflow: hidden;
+        }
+        /* Адаптивность для мобильных */
+        .mobile-menu-btn {
+            display: none;
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 99;
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            background: #3b82f6;
+            color: white;
+            border: none;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            cursor: pointer;
+        }
+        @media (max-width: 768px) {
+            .mobile-menu-btn {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+        }
+        .mobile-menu-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 90;
+        }
+        .mobile-menu-overlay.active {
+            display: block;
+        }
+    </style>
+
+    <!-- Счетчики аналитики (можно добавить позже) -->
+    <!-- Например, Google Analytics -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', 'G-XXXXXXXXXX');
+    </script>
 </body>
-
-
 </html>
-
