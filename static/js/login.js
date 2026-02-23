@@ -135,16 +135,19 @@ window.register = async function(event) {
             displayName: name
         });
         
-        // Отправляем письмо с подтверждением
-        await user.sendEmailVerification({
-            url: 'http://www.net-cloud/login',
+        let actionCodeSettings = {
+            url: window.location.origin + '/login', 
             handleCodeInApp: true
-        });
+        };
         
-        // Показываем модальное окно с подтверждением
+        if (window.location.hostname === 'www.net-cloud.ru' || window.location.hostname === 'net-cloud.ru') {
+            actionCodeSettings.url = 'http://www.net-cloud.ru/login'; 
+        }
+        
+        await user.sendEmailVerification(actionCodeSettings);
+        
         document.getElementById('verifyModal').classList.add('show');
         
-        // Выходим (чтобы нельзя было войти без подтверждения)
         await auth.signOut();
         
     } catch (error) {
@@ -168,7 +171,6 @@ window.register = async function(event) {
     }
 };
 
-// Проверяем, не авторизован ли пользователь уже
 auth.onAuthStateChanged(async (user) => {
     if (user && user.emailVerified) {
         // Уже авторизован, перенаправляем на главную
@@ -182,5 +184,6 @@ auth.onAuthStateChanged(async (user) => {
     }
 
 });
+
 
 
