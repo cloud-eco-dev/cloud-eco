@@ -1,105 +1,121 @@
-// Состояние
+// ./js/auth.js  (или login.js)
+
 let currentTab = 'login';
 
-// Переключение вкладок
+// Переключение вкладок (логин / регистрация)
 window.switchTab = function(tab) {
     currentTab = tab;
-    
-    // Обновляем классы кнопок
-    document.getElementById('loginTab').classList.remove('active');
-    document.getElementById('registerTab').classList.remove('active');
-    document.getElementById(tab === 'login' ? 'loginTab' : 'registerTab').classList.add('active');
-    
-    // Обновляем формы
-    document.getElementById('loginForm').classList.remove('active');
-    document.getElementById('registerForm').classList.remove('active');
-    document.getElementById(tab === 'login' ? 'loginForm' : 'registerForm').classList.add('active');
-    
-    // Скрываем ошибки
+
+    // Кнопки табов
+    const loginTab = document.getElementById('loginTab');
+    const registerTab = document.getElementById('registerTab');
+    loginTab.classList.toggle('active', tab === 'login');
+    registerTab.classList.toggle('active', tab === 'register');
+
+    // Формы
+    const loginForm = document.getElementById('loginForm');
+    const registerForm = document.getElementById('registerForm');
+    loginForm.classList.toggle('active', tab === 'login');
+    registerForm.classList.toggle('active', tab === 'register');
+    loginForm.style.display = tab === 'login' ? 'block' : 'none';
+    registerForm.style.display = tab === 'register' ? 'block' : 'none';
+
     hideError();
 };
 
 // Показать ошибку
 function showError(message) {
     const errorDiv = document.getElementById('errorMessage');
+    if (!errorDiv) return;
     errorDiv.textContent = message;
     errorDiv.style.display = 'block';
-    
+
+    // Автоскрытие через 6 секунд
     setTimeout(() => {
         errorDiv.style.display = 'none';
-    }, 5000);
+    }, 6000);
 }
 
-// Скрыть ошибку
 function hideError() {
-    document.getElementById('errorMessage').style.display = 'none';
+    const errorDiv = document.getElementById('errorMessage');
+    if (errorDiv) errorDiv.style.display = 'none';
 }
 
-// Показать загрузку
-function setLoading(form, loading) {
-    const btn = document.getElementById(form === 'login' ? 'loginBtn' : 'registerBtn');
+// Управление состоянием загрузки кнопки
+function setLoading(formType, isLoading) {
+    const btn = document.getElementById(formType === 'login' ? 'loginBtn' : 'registerBtn');
+    if (!btn) return;
+
     const span = btn.querySelector('span');
-    const spinner = btn.querySelector('i');
-    
-    btn.disabled = loading;
-    span.style.opacity = loading ? '0.7' : '1';
-    spinner.style.display = loading ? 'inline-block' : 'none';
+    const spinner = btn.querySelector('i.fa-spinner');
+
+    btn.disabled = isLoading;
+    if (span) span.style.opacity = isLoading ? '0.6' : '1';
+    if (spinner) spinner.style.display = isLoading ? 'inline-block' : 'none';
 }
 
 // Вход
 window.login = async function(event) {
     event.preventDefault();
-    
-    const email = document.getElementById('loginEmail').value;
-    const password = document.getElementById('loginPassword').value;
-    
+
+    const email = document.getElementById('loginEmail')?.value?.trim();
+    const password = document.getElementById('loginPassword')?.value;
+
     if (!email || !password) {
-        showError('Заполните все поля');
+        showError('Введите email и пароль');
         return;
     }
-    
+
     setLoading('login', true);
     hideError();
-    
+
     try {
-        const userCredential = await auth.signInWithEmailAndPassword(email, password);
+        const userCredential = await firebase.auth().signInWithEmailAndPassword(email, password);
         const user = userCredential.user;
-        
+
         if (!user.emailVerified) {
-            showError('Пожалуйста, подтвердите email. Проверьте почту.');
+            showError('Пожалуйста, подтвердите email. Проверьте почту (включая папку "Спам").');
+            await firebase.auth().signOut();
             setLoading('login', false);
             return;
         }
-        
-        // Сохраняем UID и перенаправляем на главную
+
+        // Сохраняем данные
         localStorage.setItem('userUID', user.uid);
         localStorage.setItem('userEmail', user.email);
-        
-        // Получаем токен для API
-        const token = await user.getIdToken();
+
+        // Получаем свежий токен
+        const token = await user.getIdToken(true);
         localStorage.setItem('token', token);
-        
-        window.location.href = '/';
-        
+
+        // Переход на главную
+        window.location.href = '/index.html';  // или '/' — как у вас настроено
+
     } catch (error) {
-        console.error('Login error:', error);
-        
-        switch(error.code) {
+        console.error('Ошибка входа:', error);
+
+        let msg = 'Ошибка входа';
+
+        switch (error.code) {
+            case 'auth/invalid-email':
+                msg = 'Неверный формат email';
+                break;
             case 'auth/user-not-found':
             case 'auth/wrong-password':
             case 'auth/invalid-credential':
-                showError('Неверный email или пароль');
-                break;
-            case 'auth/too-many-requests':
-                showError('Слишком много попыток. Попробуйте позже');
+                msg = 'Неверный email или пароль';
                 break;
             case 'auth/user-disabled':
-                showError('Аккаунт заблокирован');
+                msg = 'Аккаунт заблокирован';
+                break;
+            case 'auth/too-many-requests':
+                msg = 'Слишком много попыток. Попробуйте позже (через 5–30 минут)';
                 break;
             default:
-                showError('Ошибка входа: ' + error.message);
+                msg = error.message || 'Неизвестная ошибка';
         }
-        
+
+        showError(msg);
         setLoading('login', false);
     }
 };
@@ -107,85 +123,106 @@ window.login = async function(event) {
 // Регистрация
 window.register = async function(event) {
     event.preventDefault();
-    
-    const name = document.getElementById('registerName').value;
-    const email = document.getElementById('registerEmail').value;
-    const password = document.getElementById('registerPassword').value;
-    
+
+    const name = document.getElementById('registerName')?.value?.trim();
+    const email = document.getElementById('registerEmail')?.value?.trim();
+    const password = document.getElementById('registerPassword')?.value;
+
     if (!name || !email || !password) {
         showError('Заполните все поля');
         return;
     }
-    
+
     if (password.length < 6) {
-        showError('Пароль должен быть минимум 6 символов');
+        showError('Пароль должен содержать минимум 6 символов');
         return;
     }
-    
+
     setLoading('register', true);
     hideError();
-    
+
     try {
-        // Создаем пользователя
-        const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+        const userCredential = await firebase.auth().createUserWithEmailAndPassword(email, password);
         const user = userCredential.user;
-        
-        // Обновляем профиль с именем
-        await user.updateProfile({
-            displayName: name
-        });
-        
-        let actionCodeSettings = {
-            url: window.location.origin + '/login', 
-            handleCodeInApp: true
+
+        // Устанавливаем displayName
+        await user.updateProfile({ displayName: name });
+
+        // Настройки письма верификации
+        const actionCodeSettings = {
+            url: window.location.origin + '/login.html',  // или '/'
+            handleCodeInApp: false  // для обычной верификации обычно false
         };
-        
-        actionCodeSettings = 'https://www.net-cloud.ru/login';   
-        
+
         await user.sendEmailVerification(actionCodeSettings);
-        
-        document.getElementById('verifyModal').classList.add('show');
-        
-        await auth.signOut();
-        
+
+        // Показываем модалку
+        document.getElementById('verifyModal')?.classList.add('show');
+
+        // Выход после регистрации (чтобы не был залогинен без верификации)
+        await firebase.auth().signOut();
+
     } catch (error) {
-        console.error('Register error:', error);
-        
-        switch(error.code) {
+        console.error('Ошибка регистрации:', error);
+
+        let msg = 'Ошибка регистрации';
+
+        switch (error.code) {
             case 'auth/email-already-in-use':
-                showError('Этот email уже зарегистрирован');
+                msg = 'Этот email уже зарегистрирован';
                 break;
             case 'auth/invalid-email':
-                showError('Неверный формат email');
+                msg = 'Неверный формат email';
                 break;
             case 'auth/weak-password':
-                showError('Слишком простой пароль');
+                msg = 'Пароль слишком слабый';
                 break;
             default:
-                showError('Ошибка регистрации: ' + error.message);
+                msg = error.message || 'Неизвестная ошибка';
         }
-        
+
+        showError(msg);
         setLoading('register', false);
     }
-};
+}
 
-auth.onAuthStateChanged(async (user) => {
-    if (user && user.emailVerified) {
-        // Уже авторизован, перенаправляем на главную
-        localStorage.setItem('userUID', user.uid);
-        localStorage.setItem('userEmail', user.email);
-        
-        const token = await user.getIdToken();
-        localStorage.setItem('token', token);
-        
-        window.location.href = '/';
+// Автоматический редирект, если уже авторизован
+firebase.auth().onAuthStateChanged(async (user) => {
+    if (user) {
+        if (user.emailVerified) {
+            // Уже верифицирован → на главную
+            localStorage.setItem('userUID', user.uid);
+            localStorage.setItem('userEmail', user.email);
+            const token = await user.getIdToken();
+            localStorage.setItem('token', token);
+            window.location.href = '/index.html';  // или '/'
+        } else {
+            // Не верифицирован → остаёмся на странице логина
+            console.log('Email не подтверждён');
+        }
     }
-
 });
 
+// Инициализация табов при загрузке страницы
+document.addEventListener('DOMContentLoaded', () => {
+    // Делаем табы отзывчивыми на touch
+    const tabs = document.querySelectorAll('.tab');
+    tabs.forEach(tab => {
+        tab.addEventListener('click', (e) => {
+            const tabName = e.currentTarget.id === 'loginTab' ? 'login' : 'register';
+            switchTab(tabName);
+        });
 
+        // Touch-обработка для мобильных
+        tab.addEventListener('touchend', (e) => {
+            e.preventDefault(); // предотвращаем двойной тап/зум
+            const tabName = e.currentTarget.id === 'loginTab' ? 'login' : 'register';
+            switchTab(tabName);
+        });
+    });
 
-
-
-
-
+    // Автофокус на первое поле
+    if (currentTab === 'login') {
+        document.getElementById('loginEmail')?.focus();
+    }
+});
