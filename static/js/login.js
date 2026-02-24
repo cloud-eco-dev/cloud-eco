@@ -89,7 +89,7 @@ window.login = async function(event) {
         localStorage.setItem('token', token);
 
         // Переход на главную
-        window.location.href = '/index.html';  // или '/' — как у вас настроено
+        window.location.href = '/';  // или '/' — как у вас настроено
 
     } catch (error) {
         console.error('Ошибка входа:', error);
@@ -150,7 +150,7 @@ window.register = async function(event) {
 
         // Настройки письма верификации
         const actionCodeSettings = {
-            url: window.location.origin + '/login.html',  // или '/'
+            url: window.location.origin + '/login',  // или '/'
             handleCodeInApp: false  // для обычной верификации обычно false
         };
 
@@ -195,7 +195,7 @@ firebase.auth().onAuthStateChanged(async (user) => {
             localStorage.setItem('userEmail', user.email);
             const token = await user.getIdToken();
             localStorage.setItem('token', token);
-            window.location.href = '/index.html';  // или '/'
+            window.location.href = '/';  // или '/'
         } else {
             // Не верифицирован → остаёмся на странице логина
             console.log('Email не подтверждён');
@@ -226,3 +226,4 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('loginEmail')?.focus();
     }
 });
+
