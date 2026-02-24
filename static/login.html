@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="ru" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CloudNET — Лучший инструмент ИБ и DevOps</title>
+    <meta name="description" content="Авторизация в корпоративном облачном хранилище с end-to-end шифрованием и аудитом доступа.">
+    
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    
+    <link rel="preconnect" href="https://www.gstatic.com">
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com">
+    
+    <link rel="preload" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" as="style" onload="this.rel='stylesheet'">
+    <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"></noscript>
+    
+    <link rel="preload" href="./css/login.css" as="style" onload="this.rel='stylesheet'">
+    <!-- Отдельный CSS для auth-страниц, чтобы не смешивать с основной -->
+    
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js" defer></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js" defer></script>
+    
+    <script src="./js/firebase-config.js" defer></script>
+    <script src="./js/auth.js" defer></script> <!-- ваш предыдущий JS с login/register -->
+</head>
+<body>
+
+    <div class="auth-container">
+        <div class="auth-card">
+            <div class="logo-section">
+                <i class="fas fa-shield-halved"></i>
+                <h1>CloudNET Secure</h1>
+                <p class="subtitle">Защищённое корпоративное хранилище</p>
+            </div>
+
+            <div class="tabs">
+                <button id="loginTab" class="tab active" onclick="switchTab('login')">Вход</button>
+                <button id="registerTab" class="tab" onclick="switchTab('register')">Регистрация</button>
+            </div>
+
+            <div id="errorMessage" class="error-message"></div>
+
+            <!-- Форма входа -->
+            <form id="loginForm" class="auth-form active" onsubmit="login(event)">
+                <div class="form-group">
+                    <label for="loginEmail">Email</label>
+                    <input type="email" id="loginEmail" placeholder="corporate@company.ru" required autocomplete="email">
+                </div>
+                
+                <div class="form-group">
+                    <label for="loginPassword">Пароль</label>
+                    <input type="password" id="loginPassword" placeholder="••••••••" required autocomplete="current-password">
+                </div>
+
+                <button type="submit" id="loginBtn" class="btn-primary">
+                    <span>Войти в систему</span>
+                    <i class="fas fa-spinner fa-spin" style="display:none;"></i>
+                </button>
+
+                <div class="forgot-password">
+                    <a href="#">Забыли пароль?</a>
+                </div>
+            </form>
+
+            <!-- Форма регистрации -->
+            <form id="registerForm" class="auth-form" onsubmit="register(event)" style="display:none;">
+                <div class="form-group">
+                    <label for="registerName">Имя / ФИО</label>
+                    <input type="text" id="registerName" placeholder="Иванов Иван Иванович" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="registerEmail">Корпоративный email</label>
+                    <input type="email" id="registerEmail" placeholder="name@company.ru" required autocomplete="email">
+                </div>
+                
+                <div class="form-group">
+                    <label for="registerPassword">Пароль</label>
+                    <input type="password" id="registerPassword" placeholder="Минимум 6 символов" required autocomplete="new-password">
+                </div>
+
+                <button type="submit" id="registerBtn" class="btn-primary">
+                    <span>Создать аккаунт</span>
+                    <i class="fas fa-spinner fa-spin" style="display:none;"></i>
+                </button>
+
+                <p class="terms">Регистрируясь, вы соглашаетесь с <a href="#">Условиями использования</a> и <a href="#">Политикой конфиденциальности</a></p>
+            </form>
+
+            <!-- Модалка "Проверьте почту" после регистрации -->
+            <div id="verifyModal" class="modal">
+                <div class="modal-content">
+                    <i class="fas fa-envelope-circle-check"></i>
+                    <h2>Подтвердите email</h2>
+                    <p>Мы отправили письмо с ссылкой для подтверждения на ваш адрес.<br>Пожалуйста, проверьте почту (письмо в "Спаме").</p>
+                    <button class="btn-primary" onclick="document.getElementById('verifyModal').classList.remove('show'); switchTab('login');">
+                        Понятно, перейти ко входу
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</body>
+</html>
+
