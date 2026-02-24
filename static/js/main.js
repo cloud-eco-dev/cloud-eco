@@ -430,7 +430,6 @@ function initDragAndDrop() {
         touchFiles = [];
     });
 
-    // Для выбора файлов на тач
     dropZone.addEventListener('click', triggerFileUpload);
 }
 
@@ -458,7 +457,7 @@ firebase.auth().onAuthStateChanged(async (user) => {
         document.getElementById('fileInput').addEventListener('change', (e) => uploadFiles(e.target.files));
         await loadFiles('/');
     } else {
-        window.location.href = '/login.html';
+        window.location.href = '/login';
     }
 });
 
@@ -476,7 +475,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Закрытие меню "Создать" при клике/таче вне
     document.addEventListener('click', (e) => {
         if (!newBtn?.contains(e.target) && !newMenu?.contains(e.target)) {
             if (newMenu) newMenu.style.display = 'none';
@@ -488,7 +486,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Swipe для закрытия sidebar на мобилке
     const sidebar = document.getElementById('sidebar');
     if (sidebar) {
         let touchStartX = 0;
@@ -497,14 +494,13 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         sidebar.addEventListener('touchmove', (e) => {
             const touchX = e.touches[0].clientX;
-            if (touchX < touchStartX - 50) { // swipe left
+            if (touchX < touchStartX - 50) {
                 closeMobileMenu();
             }
         });
     }
 });
 
-// Экспорт функций в глобальную область (для onclick в HTML)
 window.loadFiles = loadFiles;
 window.createFolder = createFolder;
 window.closeFolderModal = closeFolderModal;
@@ -513,3 +509,4 @@ window.triggerFileUpload = triggerFileUpload;
 window.logout = () => firebase.auth().signOut();
 window.toggleMobileMenu = toggleMobileMenu;
 window.closeMobileMenu = closeMobileMenu;
+
