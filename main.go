@@ -522,9 +522,10 @@ func main() {
 				http.ServeFile(w, r, "static/login.html")
 			default:
 		    	http.NotFound(w, r)
-		// }
+		}
 	})
 
 	log.Printf("Server starting on http://localhost%s", Port)
 	log.Fatal(http.ListenAndServe(Port, c.Handler(r)))
 }
+
