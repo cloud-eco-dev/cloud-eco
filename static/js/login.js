@@ -140,7 +140,7 @@ window.register = async function(event) {
             handleCodeInApp: true
         };
         
-        actionCodeSettings.url = 'http://www.net-cloud.ru/login'; 
+        actionCodeSettings.url = 'https://www.net-cloud.ru/'; 
                 
         await user.sendEmailVerification(actionCodeSettings);
         
@@ -182,6 +182,7 @@ auth.onAuthStateChanged(async (user) => {
     }
 
 });
+
 
 
 
