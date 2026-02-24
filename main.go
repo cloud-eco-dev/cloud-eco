@@ -23,8 +23,8 @@ import (
 const (
 	Port           = ":8080"
 	UploadsDir     = "uploads"
-	MaxFileSize    = 300 << 20          // 300 MB
-	JWTSecret      = "bbefbbkjefbkbefbjkefbkjfehg5hui5hgii3" // В продакшене — из .env 
+	MaxFileSize    = 100 << 20          // 100 MB
+	JWTSecret      = "super-secret-key-2026-change-me" // В продакшене — из .env или секрет
 	TokenDuration  = 24 * time.Hour
 	DefaultMaxSize = 5 * 1024 * 1024 * 1024 // 5 GB на пользователя
 )
@@ -32,7 +32,7 @@ const (
 type User struct {
 	UID      string `json:"uid"`
 	Email    string `json:"email"`
-	Password string `json:"-"` 
+	Password string `json:"-"` // в продакшене — bcrypt-хеш
 }
 
 type FileInfo struct {
@@ -484,7 +484,7 @@ func main() {
 	r := mux.NewRouter()
 
 	c := cors.New(cors.Options{
-		AllowedOrigins:   []string{"www.net-cloud.ru"}, 
+		AllowedOrigins:   []string{"*"}, 
 		AllowedMethods:   []string{"GET", "POST", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Authorization", "Content-Type"},
 		AllowCredentials: true,
@@ -493,7 +493,6 @@ func main() {
 	r.HandleFunc("/api/register", registerHandler).Methods("POST")
 	r.HandleFunc("/api/login", loginHandler).Methods("POST")
 
-	// Защищённые маршруты
 	protected := r.PathPrefix("/api").Subrouter()
 	protected.Use(authMiddleware)
 
@@ -504,7 +503,28 @@ func main() {
 	protected.HandleFunc("/mkdir", mkdirHandler).Methods("POST")
 	protected.HandleFunc("/space", spaceHandler).Methods("GET")
 
-	r.PathPrefix("/static").Handler(http.FileServer(http.Dir("static")))
+	// Статические файлы (frontend) — fallback на index.html для всех не-API путей
+	r.PathPrefix("/").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Пропускаем API-запросы (хотя они уже обработаны выше)
+		if strings.HasPrefix(r.URL.Path, "/api") {
+			http.NotFound(w, r)
+			return
+		}
 
+		// Для SPA или многостраничного приложения отдаём index.html
+		// Если у тебя отдельные страницы — замени на конкретные пути
+		http.ServeFile(w, r, "static/index.html")
+		// Если нужны конкретные страницы, раскомментируй и адаптируй:
+		switch r.URL.Path {
+			case "/", "/index.html":
+		 		http.ServeFile(w, r, "static/index.html")
+			case "/login":
+				http.ServeFile(w, r, "static/login.html")
+			default:
+		    	http.NotFound(w, r)
+		// }
+	})
+
+	log.Printf("Server starting on http://localhost%s", Port)
 	log.Fatal(http.ListenAndServe(Port, c.Handler(r)))
 }
