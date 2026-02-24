@@ -4,16 +4,16 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     
-    <title>CloudNET — Enterprise-grade Cloud Storage</title>
-    <meta name="description" content="CloudNET — защищённое облачное хранилище корпоративного уровня. Шифрование, прямой доступ, высокая производительность.">
-    <meta name="keywords" content="cloud storage, enterprise cloud, object storage, шифрование, devops, cloud native">
+    <title>CloudNET — Secure DevOps Cloud Storage</title>
+    <meta name="description" content="CloudNET — защищённое облачное хранилище для DevOps и ИБ. Шифрование, CI/CD интеграция, аудит безопасности.">
+    <meta name="keywords" content="secure cloud, devops storage, infosec cloud, encryption, audit logs, cloud native">
     
     <!-- Open Graph / Twitter -->
-    <meta property="og:title" content="CloudNET — Secure Cloud Storage">
-    <meta property="og:description" content="Защищённое облако для разработчиков и бизнеса.">
+    <meta property="og:title" content="CloudNET — Secure DevOps Storage">
+    <meta property="og:description" content="Безопасное хранилище для разработчиков и ИБ-специалистов.">
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://cloudnet.ru">
-    <meta property="og:image" content="https://cloudnet.ru/images/og-dark.jpg">
+    <meta property="og:image" content="https://cloudnet.ru/images/og-secure.jpg">
     
     <meta name="twitter:card" content="summary_large_image">
     
@@ -30,10 +30,11 @@
         "@context": "https://schema.org",
         "@type": "SoftwareApplication",
         "name": "CloudNET",
-        "applicationCategory": "CloudStorage",
+        "applicationCategory": "SecureCloudStorage",
         "operatingSystem": "Web, iOS, Android, Linux, Windows, macOS",
         "offers": {"@type": "Offer", "price": "0", "priceCurrency": "RUB"},
-        "aggregateRating": {"@type": "AggregateRating", "ratingValue": "4.9", "ratingCount": "3400"}
+        "aggregateRating": {"@type": "AggregateRating", "ratingValue": "4.9", "ratingCount": "4500"},
+        "featureList": ["End-to-End Encryption", "Audit Logs", "CI/CD Integration", "RBAC Access", "Threat Detection"]
     }
     </script>
     
@@ -41,268 +42,18 @@
     <link rel="preconnect" href="https://www.gstatic.com">
     <link rel="preconnect" href="https://cdnjs.cloudflare.com">
     
-    <!-- Critical CSS (тёмная тема + glassmorphism) -->
-    <style>
-        :root {
-            --bg-primary: #0f172a;
-            --bg-secondary: #1e293b;
-            --bg-tertiary: #334155;
-            --text-primary: #e2e8f0;
-            --text-secondary: #94a3b8;
-            --accent: #3b82f6;
-            --accent-dark: #2563eb;
-            --border: rgba(226,232,240,0.08);
-            --glass-bg: rgba(30,41,59,0.65);
-            --glass-border: rgba(226,232,240,0.12);
-            --blur: blur(16px);
-        }
-        
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
-        body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: var(--bg-primary);
-            color: var(--text-primary);
-            min-height: 100vh;
-            line-height: 1.5;
-        }
-        
-        .auth-check {
-            position: fixed;
-            inset: 0;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            background: var(--bg-primary);
-            z-index: 9999;
-        }
-        
-        .spinner {
-            width: 44px;
-            height: 44px;
-            border: 4px solid var(--bg-secondary);
-            border-top-color: var(--accent);
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin-bottom: 1.25rem;
-        }
-        
-        @keyframes spin { to { transform: rotate(360deg); } }
-        
-        .app {
-            display: flex;
-            height: 100vh;
-            overflow: hidden;
-        }
-        
-        .sidebar {
-            width: 280px;
-            background: var(--bg-secondary);
-            border-right: 1px solid var(--border);
-            display: flex;
-            flex-direction: column;
-            padding: 1.5rem 1.25rem;
-            backdrop-filter: var(--blur);
-            -webkit-backdrop-filter: var(--blur);
-            transition: transform 0.3s ease;
-        }
-        
-        .logo {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            font-size: 1.5rem;
-            font-weight: 700;
-            color: white;
-            margin-bottom: 2.5rem;
-        }
-        
-        .logo i { font-size: 1.75rem; color: var(--accent); }
-        
-        .nav-menu a,
-        .nav-menu button {
-            display: flex;
-            align-items: center;
-            gap: 0.875rem;
-            width: 100%;
-            padding: 0.875rem 1rem;
-            margin: 0.25rem 0;
-            border-radius: 0.75rem;
-            color: var(--text-secondary);
-            text-decoration: none;
-            font-weight: 500;
-            transition: all 0.15s ease;
-        }
-        
-        .nav-menu a:hover,
-        .nav-menu button:hover {
-            background: var(--glass-bg);
-            color: white;
-            backdrop-filter: var(--blur);
-        }
-        
-        .nav-menu a.active {
-            background: rgba(59,130,246,0.15);
-            color: white;
-            border-left: 3px solid var(--accent);
-        }
-        
-        .storage-info {
-            margin-top: auto;
-            padding: 1.25rem 0;
-            font-size: 0.875rem;
-            color: var(--text-secondary);
-        }
-        
-        .storage-bar {
-            height: 6px;
-            background: var(--bg-tertiary);
-            border-radius: 3px;
-            overflow: hidden;
-            margin: 0.5rem 0;
-        }
-        
-        .storage-used {
-            height: 100%;
-            background: linear-gradient(90deg, var(--accent), #60a5fa);
-            transition: width 0.4s ease;
-        }
-        
-        .main-content {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            background: var(--bg-primary);
-            overflow: hidden;
-        }
-        
-        .toolbar {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 1.25rem 2rem;
-            border-bottom: 1px solid var(--border);
-            backdrop-filter: var(--blur);
-            -webkit-backdrop-filter: var(--blur);
-        }
-        
-        .breadcrumb {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            font-size: 0.95rem;
-        }
-        
-        .breadcrumb a {
-            color: var(--text-secondary);
-            text-decoration: none;
-        }
-        
-        .breadcrumb a:hover { color: white; }
-        
-        .drop-zone {
-            margin: 2rem;
-            padding: 4rem 2rem;
-            border: 2px dashed var(--border);
-            border-radius: 1rem;
-            text-align: center;
-            color: var(--text-secondary);
-            transition: all 0.2s ease;
-            backdrop-filter: var(--blur);
-        }
-        
-        .drop-zone:hover {
-            border-color: var(--accent);
-            background: rgba(59,130,246,0.05);
-        }
-        
-        .files-table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-        
-        .files-table th,
-        .files-table td {
-            padding: 1rem 1.5rem;
-            text-align: left;
-            border-bottom: 1px solid var(--border);
-        }
-        
-        .files-table th {
-            color: var(--text-secondary);
-            font-weight: 500;
-            font-size: 0.875rem;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-        }
-        
-        .modal {
-            position: fixed;
-            inset: 0;
-            background: rgba(0,0,0,0.7);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 1000;
-            backdrop-filter: blur(8px);
-        }
-        
-        .modal-content {
-            background: var(--glass-bg);
-            border: 1px solid var(--glass-border);
-            border-radius: 1rem;
-            padding: 2rem;
-            width: 100%;
-            max-width: 420px;
-            backdrop-filter: var(--blur);
-            box-shadow: 0 20px 50px rgba(0,0,0,0.4);
-        }
-        
-        /* Мобильное меню */
-        .mobile-menu-btn {
-            display: none;
-            position: fixed;
-            bottom: 24px;
-            right: 24px;
-            width: 64px;
-            height: 64px;
-            border-radius: 50%;
-            background: var(--accent);
-            color: white;
-            font-size: 1.5rem;
-            border: none;
-            box-shadow: 0 8px 30px rgba(59,130,246,0.35);
-            cursor: pointer;
-            z-index: 999;
-        }
-        
-        @media (max-width: 768px) {
-            .sidebar { 
-                position: fixed;
-                inset: 0  auto 0 0;
-                transform: translateX(-100%);
-                z-index: 100;
-            }
-            .sidebar.active { transform: translateX(0); }
-            .mobile-menu-btn { display: flex; align-items: center; justify-content: center; }
-        }
-    </style>
-    
     <!-- Font Awesome -->
-    <link rel="preload" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" as="style" onload="this.rel='stylesheet'">
-    <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"></noscript>
+    <link rel="preload" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" as="style" onload="this.rel='stylesheet'">
+    <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"></noscript>
     
-    <!-- Ваш основной CSS (если есть) -->
+    <!-- Основной CSS -->
     <link rel="preload" href="./css/style.css" as="style" onload="this.rel='stylesheet'">
+    <noscript><link rel="stylesheet" href="./css/style.css"></noscript>
     
     <!-- Firebase -->
     <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js" defer></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js" defer></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-storage-compat.js" defer></script> <!-- Добавлен для storage -->
     
     <script src="./js/firebase-config.js" defer></script>
     <script type="module" src="./js/main.js" defer></script>
@@ -311,7 +62,7 @@
 
     <div class="auth-check" id="authCheck">
         <div class="spinner"></div>
-        <p>Инициализация...</p>
+        <p>Инициализация системы...</p>
     </div>
 
     <div class="app" id="app" style="display: none;">
@@ -319,59 +70,48 @@
         <!-- Sidebar -->
         <aside class="sidebar" id="sidebar">
             <div class="logo">
-                <i class="fas fa-cloud"></i>
-                <span>CloudNET</span>
+                <i class="fas fa-shield-alt"></i> <!-- Изменил на щит для ИБ-тематики -->
+                <span>CloudNET Secure</span>
             </div>
 
             <div class="user-info" id="userInfo">
-                <i class="fas fa-user-circle fa-2x"></i>
+                <i class="fas fa-user-shield fa-2x"></i> <!-- ИБ-иконка -->
                 <div>
-                    <div id="userName" style="font-weight:600"></div>
-                    <div id="userEmail" style="font-size:0.875rem;color:var(--text-secondary)"></div>
+                    <div id="userName"></div>
+                    <div id="userEmail"></div>
                 </div>
             </div>
 
-            <button class="new-btn" id="newBtn" style="
-                width:100%; padding:1rem; margin:1.5rem 0;
-                background: var(--accent); color:white; border:none;
-                border-radius:0.75rem; font-weight:600; cursor:pointer;
-            ">
-                <i class="fas fa-plus"></i> Создать
+            <button class="new-btn" id="newBtn">
+                <i class="fas fa-plus"></i> Deploy New
             </button>
 
-            <div class="new-menu" id="newMenu" style="display:none;">
-                <button onclick="createFolder()"><i class="fas fa-folder"></i> Папку</button>
-                <button onclick="triggerFileUpload()"><i class="fas fa-upload"></i> Файлы</button>
+            <div class="new-menu" id="newMenu">
+                <button onclick="createFolder()"><i class="fas fa-folder"></i> Create Folder</button>
+                <button onclick="triggerFileUpload()"><i class="fas fa-upload"></i> Upload Artifact</button>
             </div>
 
             <nav class="nav-menu">
                 <a href="#" class="active" onclick="loadFiles('/'); return false;">
-                    <i class="fas fa-hard-drive"></i> Мой диск
+                    <i class="fas fa-server"></i> My Pipeline
                 </a>
-                <!-- Новые пункты -->
-                <a href="#" onclick="location.href='/test'; return false;">
-                    <i class="fas fa-flask"></i> Test
+                <a href="/test-lab" rel="noopener noreferrer">
+                    <i class="fas fa-flask-vial"></i> Test Lab
                 </a>
-                <a href="#" onclick="location.href='/ai-agent'; return false;">
-                    <i class="fas fa-robot"></i> AI Agent Test
+                <a href="/ai-agent-test" rel="noopener noreferrer">
+                    <i class="fas fa-brain"></i> AI Agent Test
                 </a>
             </nav>
 
             <div class="storage-info">
                 <div class="storage-bar">
-                    <div class="storage-used" id="storageUsedBar" style="width:0%"></div>
+                    <div class="storage-used" id="storageUsedBar"></div>
                 </div>
-                <div id="storageText">—</div>
+                <div id="storageText">Secure Storage: Loading...</div>
             </div>
 
-            <button onclick="logout()" style="
-                margin-top:1.5rem; width:100%; padding:0.9rem;
-                background:transparent; border:1px solid var(--border);
-                border-radius:0.75rem; color:var(--text-secondary);
-                cursor:pointer; transition:0.2s;
-            " onmouseover="this.style.background='rgba(239,68,68,0.1)';this.style.color='#fca5a5'"
-               onmouseout="this.style.background='transparent';this.style.color='var(--text-secondary)'">
-                <i class="fas fa-sign-out-alt"></i> Выйти
+            <button onclick="logout()">
+                <i class="fas fa-sign-out-alt"></i> Logout Securely
             </button>
         </aside>
 
@@ -379,65 +119,61 @@
         <main class="main-content">
             <header class="toolbar">
                 <nav class="breadcrumb" id="breadcrumb">
-                    <a href="#" onclick="navigateTo('/'); return false;">Мой диск</a>
+                    <a href="#" onclick="navigateTo('/'); return false;">Root Pipeline</a>
                 </nav>
 
-                <div style="display:flex;gap:1rem;">
-                    <button onclick="triggerFileUpload()" title="Загрузить"><i class="fas fa-upload"></i></button>
-                    <button onclick="createFolder()" title="Создать папку"><i class="fas fa-folder-plus"></i></button>
-                    <button onclick="loadFiles(currentPath)" title="Обновить"><i class="fas fa-sync-alt"></i></button>
+                <div class="toolbar-actions">
+                    <button onclick="triggerFileUpload()" title="Upload Artifact"><i class="fas fa-upload"></i></button>
+                    <button onclick="createFolder()" title="Create Secure Folder"><i class="fas fa-folder-plus"></i></button>
+                    <button onclick="loadFiles(currentPath)" title="Refresh Audit"><i class="fas fa-sync-alt"></i></button>
                 </div>
             </header>
 
-            <div class="drop-zone" id="dropZone">
-                <i class="fas fa-cloud-arrow-up fa-3x" style="margin-bottom:1rem; opacity:0.6"></i>
-                <p style="font-size:1.1rem">Перетащите файлы сюда или нажмите для выбора</p>
+            <div class="info-badge">
+                <i class="fas fa-lock"></i> End-to-End Encrypted & Audited
             </div>
 
-            <div class="files-container" style="padding:0 2rem 2rem;">
-                <table class="files-table">
+            <div class="drop-zone" id="dropZone">
+                <i class="fas fa-cloud-arrow-up fa-3x"></i>
+                <p>Drop Artifacts Here or Click to Upload Securely</p>
+            </div>
+
+            <div class="files-container">
+                <table class="files-table" aria-label="Secure Files and Folders List">
                     <thead>
                         <tr>
                             <th></th>
-                            <th>Название</th>
-                            <th>Размер</th>
-                            <th>Изменён</th>
-                            <th></th>
+                            <th>Name</th>
+                            <th>Size</th>
+                            <th>Modified</th>
+                            <th>Actions</th>
                         </tr>
                     </thead>
-                    <tbody id="fileList">
-                        <tr><td colspan="5" style="text-align:center;padding:4rem 0;color:var(--text-secondary)">
-                            <i class="fas fa-spinner fa-spin"></i> Загрузка...
-                        </td></tr>
-                    </tbody>
+                    <tbody id="fileList"></tbody>
                 </table>
             </div>
+
+            <input type="file" id="fileInput" multiple style="display:none">
         </main>
     </div>
 
-    <!-- Модалка -->
-    <div class="modal" id="folderModal" style="display:none">
+    <!-- Folder Modal -->
+    <div class="modal" id="folderModal">
         <div class="modal-content">
-            <h3 style="margin-bottom:1.5rem">Новая папка</h3>
-            <input type="text" id="folderName" placeholder="Введите имя папки" style="
-                width:100%; padding:0.9rem 1rem; background:var(--bg-tertiary);
-                border:1px solid var(--border); border-radius:0.75rem;
-                color:white; font-size:1rem; margin-bottom:1.5rem;
-            ">
-            <div style="display:flex;gap:1rem;justify-content:flex-end;">
-                <button onclick="closeFolderModal()" style="padding:0.75rem 1.5rem;background:transparent;border:1px solid var(--border);border-radius:0.75rem;color:var(--text-secondary)">Отмена</button>
-                <button onclick="createFolderConfirm()" style="padding:0.75rem 1.5rem;background:var(--accent);color:white;border:none;border-radius:0.75rem;font-weight:600">Создать</button>
+            <h3>Create Secure Folder</h3>
+            <input type="text" id="folderName" placeholder="Folder Name">
+            <div class="modal-actions">
+                <button class="cancel" onclick="closeFolderModal()">Cancel</button>
+                <button class="create" onclick="createFolderConfirm()">Create</button>
             </div>
         </div>
     </div>
 
-    <!-- Мобильное меню -->
-    <button class="mobile-menu-btn" id="mobileMenuBtn">
+    <!-- Mobile Menu -->
+    <button class="mobile-menu-btn" id="mobileMenuBtn" onclick="toggleMobileMenu()">
         <i class="fas fa-bars"></i>
     </button>
-    <div class="mobile-menu-overlay" id="mobileMenuOverlay"></div>
-
-    <input type="file" id="fileInput" multiple style="display:none">
+    <div class="mobile-menu-overlay" id="mobileMenuOverlay" onclick="closeMobileMenu()"></div>
 
 </body>
 </html>
