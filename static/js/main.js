@@ -1,269 +1,183 @@
+// main.js — профессиональная версия CloudNET (2026)
+
+const API_BASE = '/api';
 let currentPath = '/';
 let currentUser = null;
 let currentShareToken = null;
-let isMobileMenuOpen = false;
+let isSharedMode = false;
 
-// Переключение мобильного меню
-window.toggleMobileMenu = function () {
-    const sidebar = document.querySelector('.sidebar');
-    const overlay = document.getElementById('mobileMenuOverlay');
+// ========================================
+// Утилиты
+// ========================================
 
-    isMobileMenuOpen = !isMobileMenuOpen;
+function formatSize(bytes) {
+    if (bytes === 0) return '0 Б';
+    const sizes = ['Б', 'КБ', 'МБ', 'ГБ'];
+    const i = Math.floor(Math.log(bytes) / Math.log(1024));
+    return parseFloat((bytes / Math.pow(1024, i)).toFixed(1)) + ' ' + sizes[i];
+}
 
-    if (isMobileMenuOpen) {
-        sidebar.classList.add('open');
-        overlay.classList.add('show');
-        document.body.style.overflow = 'hidden';
-    } else {
-        sidebar.classList.remove('open');
-        overlay.classList.remove('show');
-        document.body.style.overflow = '';
-    }
-};
+function getFileIcon(file) {
+    if (file.isDir) return 'folder';
+    const ext = file.name.split('.').pop().toLowerCase();
+    const icons = {
+        'pdf': 'file-pdf', 'doc': 'file-word', 'docx': 'file-word',
+        'xls': 'file-excel', 'xlsx': 'file-excel', 'ppt': 'file-powerpoint', 'pptx': 'file-powerpoint',
+        'jpg': 'file-image', 'jpeg': 'file-image', 'png': 'file-image', 'gif': 'file-image',
+        'mp4': 'file-video', 'mov': 'file-video', 'avi': 'file-video',
+        'mp3': 'file-audio', 'zip': 'file-archive', 'rar': 'file-archive',
+        'js': 'file-code', 'ts': 'file-code', 'html': 'file-code', 'css': 'file-code',
+        'go': 'file-code'
+    };
+    return icons[ext] || 'file';
+}
 
-window.closeMobileMenu = function () {
-    const sidebar = document.querySelector('.sidebar');
-    const overlay = document.getElementById('mobileMenuOverlay');
+function showToast(message, type = 'info') {
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.textContent = message;
+    document.body.appendChild(toast);
 
-    isMobileMenuOpen = false;
-    sidebar.classList.remove('open');
-    overlay.classList.remove('show');
-    document.body.style.overflow = '';
-};
+    setTimeout(() => toast.classList.add('show'), 100);
+    setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 300);
+    }, 4000);
+}
 
-// Закрывать меню при клике на ссылку
-document.addEventListener('DOMContentLoaded', function () {
-    const menuLinks = document.querySelectorAll('.nav-menu a');
-    menuLinks.forEach(link => {
-        link.addEventListener('click', function () {
-            if (window.innerWidth <= 768) {
-                closeMobileMenu();
-            }
-        });
-    });
-});
+function showLoading() {
+    document.getElementById('fileList').innerHTML = `
+        <tr><td colspan="5" class="loading">
+            <div class="spinner"></div>
+            <span>Загрузка...</span>
+        </td></tr>`;
+}
 
-// Следим за изменением размера окна
-window.addEventListener('resize', function () {
-    if (window.innerWidth > 768 && isMobileMenuOpen) {
-        closeMobileMenu();
-    }
-});
+function showError(message) {
+    document.getElementById('fileList').innerHTML = `
+        <tr><td colspan="5" class="error-message">
+            <i class="fas fa-exclamation-triangle"></i> ${message}
+        </td></tr>`;
+}
 
-// Инициализация
+// ========================================
+// Аутентификация и инициализация
+// ========================================
+
 document.addEventListener('DOMContentLoaded', async () => {
-    // Проверяем токен в URL
     const urlParams = new URLSearchParams(window.location.search);
     currentShareToken = urlParams.get('token');
-    
+
     if (currentShareToken) {
-        // Режим доступа по ссылке
+        isSharedMode = true;
         document.getElementById('authCheck').style.display = 'none';
         document.getElementById('app').style.display = 'flex';
-        
-        // Скрываем кнопки для режима только для чтения
-        await checkSharedAccess();
-        
-        // Загружаем файлы из расшаренной папки
         await loadSharedFiles('/');
         setupEventListeners(true);
     } else {
-        // Обычный режим
-        const userUID = localStorage.getItem('userUID');
-
-        if (!userUID) {
+        const token = localStorage.getItem('token');
+        if (!token) {
             window.location.href = '/login';
             return;
         }
 
         auth.onAuthStateChanged(async (user) => {
-            if (user && user.emailVerified) {
+            if (user) {
                 currentUser = user;
                 document.getElementById('authCheck').style.display = 'none';
                 document.getElementById('app').style.display = 'flex';
-
-                document.getElementById('userName').textContent = user.displayName || 'Пользователь';
+                document.getElementById('userName').textContent = user.displayName || user.email.split('@')[0];
                 document.getElementById('userEmail').textContent = user.email;
-
-                // Загружаем файлы
                 await loadFiles('/');
-                loadStorageInfo();
+                await loadStorageInfo();
                 setupEventListeners(false);
             } else {
                 window.location.href = '/login';
             }
         });
     }
+
+    // Темная/светлая тема
+    const themeToggle = document.getElementById('themeToggle');
+    if (themeToggle) {
+        themeToggle.addEventListener('click', () => {
+            document.documentElement.classList.toggle('light');
+            localStorage.setItem('theme', document.documentElement.classList.contains('light') ? 'light' : 'dark');
+        });
+
+        // Восстановить тему
+        if (localStorage.getItem('theme') === 'light') {
+            document.documentElement.classList.add('light');
+        }
+    }
 });
 
-// Проверка прав доступа при шаринге
-async function checkSharedAccess() {
-    try {
-        const response = await fetch(`/api/share/access/${currentShareToken}`);
-        const result = await response.json();
-        
-        if (result.success) {
-            const accessInfo = result.data;
-            
-            document.getElementById('userName').textContent = 'Гостевой доступ';
-            document.getElementById('userEmail').textContent = `Папка: ${accessInfo.path}`;
-            
-            // Если только чтение - скрываем кнопки создания
-            if (accessInfo.permission !== 'write') {
-                document.getElementById('newBtn').style.display = 'none';
-                document.querySelector('.logout-btn').style.display = 'none';
-            }
-        }
-    } catch (error) {
-        console.error('Ошибка проверки доступа:', error);
-    }
-}
-
-// Настройка обработчиков
-function setupEventListeners(isShared = false) {
-    const dropZone = document.getElementById('dropZone');
-    const newBtn = document.getElementById('newBtn');
-    const newMenu = document.getElementById('newMenu');
-    const fileInput = document.getElementById('fileInput');
-
-    // Drag & Drop
-    document.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        if (currentUser || isShared) dropZone.classList.add('show');
-    });
-
-    document.addEventListener('dragleave', (e) => {
-        if (!e.relatedTarget || !e.relatedTarget.closest) {
-            dropZone.classList.remove('show');
-        }
-    });
-
-    document.addEventListener('drop', (e) => {
-        e.preventDefault();
-        dropZone.classList.remove('show');
-
-        if (!currentUser && !isShared) return;
-
-        const files = e.dataTransfer.files;
-        if (files.length > 0) {
-            uploadFiles(files);
-        }
-    });
-
-    // Кнопка создания
-    if (newBtn) {
-        newBtn.addEventListener('click', () => {
-            newMenu.classList.toggle('show');
-        });
-    }
-
-    // Закрытие меню при клике вне
-    document.addEventListener('click', (e) => {
-        if (!e.target.closest('#newBtn') && !e.target.closest('#newMenu')) {
-            if (newMenu) newMenu.classList.remove('show');
-        }
-    });
-
-    // Выбор файлов
-    if (fileInput) {
-        fileInput.addEventListener('change', (e) => {
-            if (e.target.files.length > 0) {
-                uploadFiles(e.target.files);
-            }
-            e.target.value = '';
-        });
-    }
-}
-
+// ========================================
 // Загрузка файлов (обычный режим)
-window.loadFiles = async function (path) {
+// ========================================
+
+window.loadFiles = async function(path = '/') {
     if (!currentUser) return;
-    
-    if (path === undefined || path === null) {
-        path = currentPath;
-    }
-    
-    if (!path.startsWith('/')) {
-        path = '/' + path;
-    }
-    
-    path = path.replace(/\/+/g, '/');
-    currentPath = path;
+
+    currentPath = path.startsWith('/') ? path : '/' + path;
+    currentPath = currentPath.replace(/\/+/g, '/');
+
+    showLoading();
 
     try {
-        showLoading();
-        
-        const response = await fetch(`/api/files?path=${encodeURIComponent(path)}`, {
-            headers: { 'X-User-UID': currentUser.uid }
+        const response = await fetch(`${API_BASE}/files?path=${encodeURIComponent(currentPath)}`, {
+            headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
         });
-        
+
+        if (!response.ok) throw new Error(await response.text());
+
         const result = await response.json();
 
         if (result.success) {
-            updateBreadcrumb(path, false);
-            renderFiles(result.data, false);
+            updateBreadcrumb(currentPath);
+            renderFiles(result.data);
         } else {
-            showError(result.error || 'Ошибка загрузки файлов');
+            showError(result.error || 'Ошибка загрузки');
         }
-    } catch (error) {
-        console.error('Ошибка загрузки:', error);
-        showError('Ошибка соединения с сервером');
+    } catch (err) {
+        console.error(err);
+        showError('Ошибка соединения');
     }
 };
 
-// Загрузка расшаренных файлов
-window.loadSharedFiles = async function (path) {
+// ========================================
+// Загрузка по shared-ссылке
+// ========================================
+
+window.loadSharedFiles = async function(path = '/') {
     if (!currentShareToken) return;
-    
-    if (path === undefined || path === null) {
-        path = currentPath;
-    }
-    
-    if (!path.startsWith('/')) {
-        path = '/' + path;
-    }
-    
-    path = path.replace(/\/+/g, '/');
-    currentPath = path;
+
+    currentPath = path.startsWith('/') ? path : '/' + path;
+    currentPath = currentPath.replace(/\/+/g, '/');
+
+    showLoading();
 
     try {
-        showLoading();
-        
-        const response = await fetch(`/api/files?path=${encodeURIComponent(path)}&token=${currentShareToken}`);
+        const response = await fetch(`${API_BASE}/files?path=${encodeURIComponent(currentPath)}&token=${currentShareToken}`);
         const result = await response.json();
-        
+
         if (result.success) {
-            updateBreadcrumb(path, true);
+            updateBreadcrumb(currentPath, true);
             renderFiles(result.data, true);
         } else {
-            showError(result.error || 'Ошибка загрузки файлов');
+            showError(result.error || 'Доступ запрещён');
         }
-    } catch (error) {
-        console.error('Ошибка загрузки:', error);
-        showError('Ошибка соединения с сервером');
+    } catch (err) {
+        showError('Ошибка доступа');
     }
 };
 
-// Навигация по папкам - ИСПРАВЛЕНО
-window.navigateTo = function (path, isShared = false, event) {
-    // Если событие есть и оно всплыло от кнопки - не навигируем
-    if (event && (event.target.tagName === 'BUTTON' || event.target.closest('button'))) {
-        return;
-    }
-    
-    if (!path.startsWith('/')) {
-        path = '/' + path;
-    }
-    
-    path = path.replace(/\/+/g, '/');
-    
-    const fileName = path.split('/').pop();
-    if (fileName && fileName.includes('.')) {
-        return;
-    }
-    
-    console.log('Навигация в папку:', path); // Для отладки
-    
+// ========================================
+// Навигация по папкам
+// ========================================
+
+window.navigateTo = function(path, isShared = false) {
+    if (!path) return;
     if (isShared) {
         loadSharedFiles(path);
     } else {
@@ -271,453 +185,305 @@ window.navigateTo = function (path, isShared = false, event) {
     }
 };
 
-// Обновление хлебных крошек
+// ========================================
+// Хлебные крошки
+// ========================================
+
 function updateBreadcrumb(path, isShared = false) {
     const breadcrumb = document.getElementById('breadcrumb');
-    
-    let parts = path.split('/').filter(p => p && p !== '');
-    
-    let html = '';
-    
-    if (isShared) {
-        html = '<a href="#" onclick="loadSharedFiles(\'/\', false, event); return false;">Общая папка</a>';
-    } else {
-        html = '<a href="#" onclick="loadFiles(\'/\', false, event); return false;">Мой диск</a>';
-    }
-    
-    let currentPath = '';
-    
-    for (let i = 0; i < parts.length; i++) {
-        const part = parts[i];
-        currentPath += '/' + part;
-        
+    if (!breadcrumb) return;
+
+    let parts = path.split('/').filter(p => p);
+    let html = isShared ? '<span class="shared-icon">🔗 Общая папка</span>' : '<a href="#" onclick="navigateTo(\'/')">Мой диск</a>';
+
+    let current = '';
+    parts.forEach((part, i) => {
+        current += '/' + part;
         if (i === parts.length - 1) {
-            html += ` <span>/</span> <span>${part}</span>`;
+            html += ` <span class="current">${part}</span>`;
         } else {
-            html += ` <span>/</span> <a href="#" onclick="${isShared ? 'loadSharedFiles' : 'loadFiles'}('${currentPath}', false, event); return false;">${part}</a>`;
+            html += ` <a href="#" onclick="navigateTo('${current}')">${part}</a> <span class="separator">/</span>`;
         }
-    }
-    
+    });
+
     breadcrumb.innerHTML = html;
 }
 
-// Отрисовка файлов - ИСПРАВЛЕНО
-function renderFiles(files, isShared = false) {
-    const tbody = document.getElementById('fileList');
+// ========================================
+// Отрисовка файлов (карточки + таблица)
+// ========================================
 
+function renderFiles(files, isShared = false) {
+    const container = document.getElementById('fileList');
     if (!files || files.length === 0) {
-        tbody.innerHTML = `
-            <tr>
-                <td colspan="5" class="loading">
-                    <i class="fas fa-folder-open"></i> Папка пуста
-                </td>
-            </tr>
-        `;
+        container.innerHTML = `
+            <div class="empty-state">
+                <i class="fas fa-folder-open fa-3x"></i>
+                <p>Папка пуста</p>
+            </div>`;
         return;
     }
 
+    let html = '';
     files.sort((a, b) => {
         if (a.isDir && !b.isDir) return -1;
         if (!a.isDir && b.isDir) return 1;
         return a.name.localeCompare(b.name);
     });
 
-    let html = '';
     files.forEach(file => {
         const icon = getFileIcon(file);
         const size = file.isDir ? '—' : formatSize(file.size);
-        const date = new Date(file.modified).toLocaleString();
+        const date = new Date(file.modified).toLocaleString('ru-RU', { dateStyle: 'medium', timeStyle: 'short' });
 
         html += `
-            <tr ondblclick="navigateTo('${file.path}', ${isShared}, event)">
-                <td>
-                    <i class="fas ${icon} file-icon" style="color: ${getIconColor(file)}"></i>
-                </td>
-                <td>${file.name}</td>
-                <td>${size}</td>
-                <td>${date}</td>
-                <td class="file-actions">
-                    ${!file.isDir ? `<button onclick="downloadFile('${file.path}', ${isShared}, event)" title="Скачать"><i class="fas fa-download"></i></button>` : ''}
-                    ${!isShared ? `<button onclick="deleteFile('${file.path}', event)" title="Удалить"><i class="fas fa-trash"></i></button>` : ''}
-                </td>
-            </tr>
-        `;
+            <div class="file-card ${file.isDir ? 'folder' : 'file'}" onclick="navigateTo('${file.path}', ${isShared})" data-path="${file.path}">
+                <div class="file-icon">
+                    <i class="fas fa-${icon}"></i>
+                </div>
+                <div class="file-name">${file.name}</div>
+                <div class="file-size">${size}</div>
+                <div class="file-date">${date}</div>
+                <div class="file-actions">
+                    ${!file.isDir ? `<button class="action-btn download" onclick="event.stopPropagation(); downloadFile('${file.path}', ${isShared})"><i class="fas fa-download"></i></button>` : ''}
+                    ${!isShared ? `<button class="action-btn delete" onclick="event.stopPropagation(); deleteFile('${file.path}')"><i class="fas fa-trash-alt"></i></button>` : ''}
+                </div>
+            </div>`;
     });
 
-    tbody.innerHTML = html;
+    container.innerHTML = html;
 }
 
+// ========================================
 // Загрузка файлов
-window.triggerFileUpload = function () {
+// ========================================
+
+window.triggerFileUpload = function() {
     document.getElementById('fileInput').click();
 };
 
 async function uploadFiles(files) {
-    if (!files || files.length === 0) return;
-    
+    if (!files?.length) return;
+
     showUploadProgress(0, files.length);
-    
-    let successCount = 0;
-    let errorCount = 0;
-    
+
+    let success = 0, failed = 0;
+
     for (let i = 0; i < files.length; i++) {
         const file = files[i];
         const formData = new FormData();
         formData.append('file', file);
 
         try {
-            let url = `/api/upload?path=${encodeURIComponent(currentPath)}`;
+            let url = `${API_BASE}/upload?path=${encodeURIComponent(currentPath)}`;
             let headers = {};
-            
+
             if (currentShareToken) {
                 url += `&token=${currentShareToken}`;
             } else if (currentUser) {
-                headers['X-User-UID'] = currentUser.uid;
-            } else {
-                errorCount++;
-                continue;
+                headers['Authorization'] = `Bearer ${localStorage.getItem('token')}`;
             }
-            
+
             const response = await fetch(url, {
                 method: 'POST',
-                headers: headers,
+                headers,
                 body: formData
             });
-            
+
             const result = await response.json();
-            
+
             if (result.success) {
-                successCount++;
+                success++;
             } else {
-                errorCount++;
-                alert(`Ошибка при загрузке ${file.name}: ${result.error || 'Неизвестная ошибка'}`);
+                failed++;
+                showToast(`Ошибка загрузки ${file.name}: ${result.error}`, 'error');
             }
-            
+
             showUploadProgress(i + 1, files.length);
-            
-        } catch (error) {
-            errorCount++;
-            console.error('Ошибка загрузки:', error);
-            alert(`Ошибка при загрузке ${file.name}: ${error.message}`);
+        } catch (err) {
+            failed++;
+            showToast(`Ошибка сети при загрузке ${file.name}`, 'error');
         }
     }
 
     hideUploadProgress();
-    
-    if (successCount > 0) {
-        if (currentShareToken) {
-            await loadSharedFiles(currentPath);
+
+    if (success > 0) {
+        showToast(`Загружено ${success} из ${files.length} файлов`, 'success');
+        if (isSharedMode) {
+            loadSharedFiles(currentPath);
         } else {
-            await loadFiles(currentPath);
+            loadFiles(currentPath);
             loadStorageInfo();
         }
     }
 }
 
+// ========================================
 // Создание папки
-window.createFolder = function () {
-    document.getElementById('newMenu').classList.remove('show');
+// ========================================
+
+window.createFolder = function() {
     document.getElementById('folderModal').classList.add('show');
-    document.getElementById('folderName').value = '';
     document.getElementById('folderName').focus();
 };
 
-window.closeFolderModal = function () {
+window.closeFolderModal = function() {
     document.getElementById('folderModal').classList.remove('show');
 };
 
-window.createFolderConfirm = async function () {
+window.createFolderConfirm = async function() {
     const name = document.getElementById('folderName').value.trim();
-    if (!name) return;
+    if (!name) {
+        showToast('Введите имя папки', 'warning');
+        return;
+    }
 
     try {
-        let url = '/api/mkdir';
-        let headers = { 'Content-Type': 'application/json' };
-        let body = {};
-        
-        if (currentShareToken) {
-            body = { path: currentPath, name, token: currentShareToken };
-        } else if (currentUser) {
-            headers['X-User-UID'] = currentUser.uid;
-            body = { path: currentPath, name };
-        } else {
-            return;
-        }
-        
-        const response = await fetch(url, {
+        const response = await fetch(`${API_BASE}/mkdir`, {
             method: 'POST',
-            headers: headers,
-            body: JSON.stringify(body)
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            },
+            body: JSON.stringify({ path: currentPath, name })
         });
-        
+
         const result = await response.json();
 
         if (result.success) {
             closeFolderModal();
-            if (currentShareToken) {
-                await loadSharedFiles(currentPath);
-            } else {
-                await loadFiles(currentPath);
-            }
+            loadFiles(currentPath);
+            showToast('Папка создана', 'success');
         } else {
-            alert(result.error || 'Ошибка создания папки');
+            showToast(result.error || 'Ошибка создания', 'error');
         }
-    } catch (error) {
-        console.error('Ошибка:', error);
-        alert('Ошибка при создании папки');
+    } catch (err) {
+        showToast('Ошибка сети', 'error');
     }
 };
 
-// Удаление - ИСПРАВЛЕНО
-window.deleteFile = async function (path, event) {
-    if (event) {
-        event.preventDefault();
-        event.stopPropagation();
-    }
-    
-    if (!confirm('Удалить этот элемент?')) return;
+// ========================================
+// Удаление
+// ========================================
+
+window.deleteFile = async function(path) {
+    if (!confirm('Удалить этот элемент навсегда?')) return;
 
     try {
-        let url = `/api/delete/${encodeURIComponent(path)}`;
-        let headers = {};
-        
-        if (currentShareToken) {
-            url += `?token=${currentShareToken}`;
-        } else if (currentUser) {
-            headers['X-User-UID'] = currentUser.uid;
-        } else {
-            return;
-        }
-        
-        const response = await fetch(url, {
+        const response = await fetch(`${API_BASE}/delete/${encodeURIComponent(path)}`, {
             method: 'DELETE',
-            headers: headers
+            headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
         });
 
         const result = await response.json();
 
         if (result.success) {
-            if (currentShareToken) {
-                await loadSharedFiles(currentPath);
-            } else {
-                await loadFiles(currentPath);
-                loadStorageInfo();
-            }
+            loadFiles(currentPath);
+            showToast('Удалено успешно', 'success');
         } else {
-            alert(result.error || 'Ошибка удаления');
+            showToast(result.error || 'Ошибка удаления', 'error');
         }
-    } catch (error) {
-        console.error('Ошибка:', error);
-        alert('Ошибка при удалении');
+    } catch (err) {
+        showToast('Ошибка сети', 'error');
     }
 };
 
-// Скачивание - ИСПРАВЛЕНО
-window.downloadFile = function (path, isShared = false, event) {
-    if (event) {
-        event.preventDefault();
-        event.stopPropagation();
-    }
-    
-    let url;
-    
-    if (isShared && currentShareToken) {
-        url = `/api/download/${encodeURIComponent(path)}?token=${currentShareToken}`;
-    } else if (currentUser) {
-        url = `/api/download/${encodeURIComponent(path)}?uid=${currentUser.uid}`;
-    } else {
-        alert('Ошибка: не удалось определить пользователя');
-        return;
-    }
-    
-    window.location.href = url;
+// ========================================
+// Скачивание
+// ========================================
+
+window.downloadFile = function(path) {
+    const url = `${API_BASE}/download/${encodeURIComponent(path)}`;
+    const token = localStorage.getItem('token');
+    window.location.href = token ? `${url}?token=${token}` : url;
 };
 
-// Выход
-window.logout = async function () {
-    await auth.signOut();
-    localStorage.removeItem('userUID');
-    localStorage.removeItem('userEmail');
-    localStorage.removeItem('token');
-    window.location.href = '/login';
-};
+// ========================================
+// Хранилище
+// ========================================
 
-// Загрузка информации о хранилище
 async function loadStorageInfo() {
-    if (!currentUser) return;
-
     try {
-        const response = await fetch('/api/space', {
-            headers: { 'X-User-UID': currentUser.uid }
+        const response = await fetch(`${API_BASE}/space`, {
+            headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
         });
         const result = await response.json();
 
         if (result.success) {
             const data = result.data;
-            document.getElementById('storageUsedBar').style.width = data.percent + '%';
-            document.getElementById('storageText').innerHTML = `
-                Использовано ${formatSize(data.used)} из 500 МБ (${data.percent.toFixed(1)}%)
-            `;
+            document.getElementById('storageUsedBar').style.width = `${data.percent}%`;
+            document.getElementById('storageText').textContent = 
+                `Использовано ${formatSize(data.used)} из ${formatSize(data.max)} (${data.percent.toFixed(1)}%)`;
         }
-    } catch (error) {
-        console.error('Ошибка загрузки информации о хранилище:', error);
+    } catch (err) {
+        console.error('Ошибка загрузки места:', err);
     }
 }
 
-// Вспомогательные функции
-function showLoading() {
-    const tbody = document.getElementById('fileList');
-    tbody.innerHTML = `
-        <tr>
-            <td colspan="5" class="loading">
-                <i class="fas fa-spinner fa-spin"></i> Загрузка...
-            </td>
-        </tr>
-    `;
-}
-
-function showError(message) {
-    const tbody = document.getElementById('fileList');
-    tbody.innerHTML = `
-        <tr>
-            <td colspan="5" class="loading" style="color: #e53e3e;">
-                <i class="fas fa-exclamation-circle"></i> ${message}
-            </td>
-        </tr>
-    `;
-}
+// ========================================
+// Прогресс загрузки
+// ========================================
 
 function showUploadProgress(current, total) {
-    let progressBar = document.getElementById('uploadProgress');
-    if (!progressBar) {
-        progressBar = document.createElement('div');
-        progressBar.id = 'uploadProgress';
-        progressBar.className = 'upload-progress';
-        progressBar.innerHTML = `
-            <div class="progress-bar-container">
-                <div class="progress-bar" id="uploadProgressBar" style="width: 0%"></div>
-            </div>
-            <div class="progress-info">
-                <span>Загрузка...</span>
-                <span id="uploadProgressText">0%</span>
-            </div>
-        `;
-        document.body.appendChild(progressBar);
+    let bar = document.getElementById('uploadProgress');
+    if (!bar) {
+        bar = document.createElement('div');
+        bar.id = 'uploadProgress';
+        bar.innerHTML = `
+            <div class="progress-container">
+                <div class="progress-bar" id="uploadBar"></div>
+                <span id="uploadText">0%</span>
+            </div>`;
+        document.body.appendChild(bar);
     }
-    
     const percent = Math.round((current / total) * 100);
-    document.getElementById('uploadProgressBar').style.width = percent + '%';
-    document.getElementById('uploadProgressText').textContent = percent + '%';
-    
-    if (current === total) {
-        setTimeout(() => {
-            hideUploadProgress();
-        }, 1000);
-    }
+    document.getElementById('uploadBar').style.width = `${percent}%`;
+    document.getElementById('uploadText').textContent = `${percent}%`;
 }
 
 function hideUploadProgress() {
-    const progressBar = document.getElementById('uploadProgress');
-    if (progressBar) {
-        progressBar.remove();
-    }
+    const bar = document.getElementById('uploadProgress');
+    if (bar) bar.remove();
 }
 
-function getFileIcon(file) {
-    if (file.isDir) return 'fa-folder';
+// ========================================
+// Drag & Drop + события
+// ========================================
 
-    const ext = file.name.split('.').pop().toLowerCase();
-    const icons = {
-        'jpg': 'fa-file-image', 'jpeg': 'fa-file-image', 'png': 'fa-file-image', 'gif': 'fa-file-image',
-        'pdf': 'fa-file-pdf',
-        'doc': 'fa-file-word', 'docx': 'fa-file-word',
-        'xls': 'fa-file-excel', 'xlsx': 'fa-file-excel',
-        'ppt': 'fa-file-powerpoint', 'pptx': 'fa-file-powerpoint',
-        'txt': 'fa-file-alt',
-        'mp3': 'fa-file-audio', 'wav': 'fa-file-audio',
-        'mp4': 'fa-file-video', 'avi': 'fa-file-video', 'mov': 'fa-file-video',
-        'zip': 'fa-file-archive', 'rar': 'fa-file-archive', '7z': 'fa-file-archive',
-        'html': 'fa-file-code', 'css': 'fa-file-code', 'js': 'fa-file-code', 'go': 'fa-file-code'
-    };
+function setupEventListeners(isShared) {
+    const dropZone = document.getElementById('dropZone');
 
-    return icons[ext] || 'fa-file';
+    dropZone.addEventListener('dragover', e => {
+        e.preventDefault();
+        dropZone.classList.add('drag-over');
+    });
+
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+    dropZone.addEventListener('drop', e => {
+        e.preventDefault();
+        dropZone.classList.remove('drag-over');
+        uploadFiles(e.dataTransfer.files);
+    });
+
+    dropZone.addEventListener('click', () => document.getElementById('fileInput').click());
+
+    document.getElementById('fileInput').addEventListener('change', e => {
+        uploadFiles(e.target.files);
+        e.target.value = '';
+    });
 }
 
-function getIconColor(file) {
-    if (file.isDir) return '#5f6368';
+// ========================================
+// Выход
+// ========================================
 
-    const colors = {
-        'fa-file-image': '#34a853',
-        'fa-file-pdf': '#d93025',
-        'fa-file-word': '#1a73e8',
-        'fa-file-excel': '#0f9d58',
-        'fa-file-powerpoint': '#f9ab00',
-        'fa-file-audio': '#c5221f',
-        'fa-file-video': '#ea8600',
-        'fa-file-archive': '#b3147c',
-        'fa-file-code': '#1e8e3e',
-        'fa-file-alt': '#5f6368'
-    };
-
-    const icon = getFileIcon(file);
-    return colors[icon] || '#5f6368';
-}
-
-function formatSize(bytes) {
-    if (bytes === 0) return '0 Б';
-
-    const sizes = ['Б', 'КБ', 'МБ', 'ГБ'];
-    const i = Math.floor(Math.log(bytes) / Math.log(1024));
-
-    return parseFloat((bytes / Math.pow(1024, i)).toFixed(1)) + ' ' + sizes[i];
-}
-
-// Добавляем стили для прогресс-бара
-const style = document.createElement('style');
-style.textContent = `
-    .upload-progress {
-        position: fixed;
-        bottom: 20px;
-        right: 20px;
-        width: 300px;
-        background: white;
-        border-radius: 12px;
-        padding: 16px;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.2);
-        z-index: 1000;
-        animation: slideIn 0.3s ease;
+window.logout = async function() {
+    try {
+        await auth.signOut();
+        localStorage.clear();
+        window.location.href = '/login';
+    } catch (err) {
+        showToast('Ошибка выхода', 'error');
     }
-    
-    @keyframes slideIn {
-        from {
-            transform: translateX(100%);
-            opacity: 0;
-        }
-        to {
-            transform: translateX(0);
-            opacity: 1;
-        }
-    }
-    
-    .progress-bar-container {
-        height: 8px;
-        background: #e0e0e0;
-        border-radius: 4px;
-        overflow: hidden;
-        margin-bottom: 8px;
-    }
-    
-    .progress-bar {
-        height: 100%;
-        background: linear-gradient(90deg, #667eea, #764ba2);
-        transition: width 0.3s;
-    }
-    
-    .progress-info {
-        display: flex;
-        justify-content: space-between;
-        color: #666;
-        font-size: 14px;
-    }
-`;
-document.head.appendChild(style);
+};
