@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -13,8 +14,26 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dgrijalva/jwt-go"
 	"github.com/gorilla/mux"
+	"github.com/rs/cors"
+	"golang.org/x/net/context"
 )
+
+const (
+	Port           = ":8080"
+	UploadsDir     = "uploads"
+	MaxFileSize    = 100 << 20 // 100 MB
+	JWTSecret      = "super-secret-key-2026-change-me" // В продакшене — из .env или Vault
+	TokenDuration  = 24 * time.Hour
+	DefaultMaxSize = 5 * 1024 * 1024 * 1024 // 5 GB на пользователя
+)
+
+type User struct {
+	UID      string `json:"uid"`
+	Email    string `json:"email"`
+	Password string `json:"-"` // хешированный пароль в реальном проекте
+}
 
 type FileInfo struct {
 	Name     string    `json:"name"`
@@ -32,14 +51,13 @@ type Response struct {
 }
 
 type SpaceInfo struct {
-	Used    int64   `json:"used"`
-	Max     int64   `json:"max"`
-	UsedGB  float64 `json:"usedGB"`
-	MaxGB   float64 `json:"maxGB"`
-	Percent float64 `json:"percent"`
+	Used     int64   `json:"used"`
+	Max      int64   `json:"max"`
+	UsedGB   float64 `json:"usedGB"`
+	MaxGB    float64 `json:"maxGB"`
+	Percent  float64 `json:"percent"`
 }
 
-// Структура для шаринга
 type ShareLink struct {
 	ID         string    `json:"id"`
 	Path       string    `json:"path"`
@@ -50,704 +68,543 @@ type ShareLink struct {
 	Token      string    `json:"token"`
 }
 
-// Хранилище ссылок для доступа (в памяти)
 var (
-	shareLinks = make(map[string]ShareLink)
-	linksMutex = &sync.RWMutex{}
+	users      = map[string]User{} // email -> user
+	shareLinks = map[string]ShareLink{}
+	mu         = &sync.RWMutex{}
 )
 
-func main() {
-	// Создаем папку для загрузок
-	os.MkdirAll("uploads", os.ModePerm)
-
-	r := mux.NewRouter()
-
-	// Раздача статических файлов
-	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
-	r.PathPrefix("/css/").Handler(http.StripPrefix("/css/", http.FileServer(http.Dir("static/css"))))
-	r.PathPrefix("/js/").Handler(http.StripPrefix("/js/", http.FileServer(http.Dir("static/js"))))
-
-	// Страницы
-	r.HandleFunc("/", serveIndex)
-	r.HandleFunc("/login", serveLogin)
-	r.HandleFunc("/shared", serveShared)
-
-	// API для файлов
-	r.HandleFunc("/api/files", listFilesHandler).Methods("GET")
-	r.HandleFunc("/api/upload", uploadHandler).Methods("POST")
-	r.HandleFunc("/api/download/", downloadHandler).Methods("GET")
-	r.HandleFunc("/api/delete/", deleteHandler).Methods("DELETE")
-	r.HandleFunc("/api/mkdir", mkdirHandler).Methods("POST")
-	r.HandleFunc("/api/space", spaceHandler).Methods("GET")
-	
-	// API для шаринга
-	r.HandleFunc("/api/share/create", createShareLinkHandler).Methods("POST")
-	r.HandleFunc("/api/share/list", listShareLinksHandler).Methods("GET")
-	r.HandleFunc("/api/share/delete/{id}", deleteShareLinkHandler).Methods("DELETE")
-
-	fmt.Println("🚀 Сервер запущен на http://localhost:8080")
-	fmt.Println("📁 Страница входа: http://localhost:8080/login")
-	http.ListenAndServe(":8080", r)
-}
-
-func serveIndex(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/" {
-		http.NotFound(w, r)
-		return
+func generateToken(length int) string {
+	b := make([]byte, length)
+	_, err := rand.Read(b)
+	if err != nil {
+		log.Fatal(err)
 	}
-	http.ServeFile(w, r, "static/index.html")
-}
-
-func serveLogin(w http.ResponseWriter, r *http.Request) {
-	http.ServeFile(w, r, "static/login.html")
-}
-
-func serveShared(w http.ResponseWriter, r *http.Request) {
-	http.ServeFile(w, r, "static/index.html")
-}
-
-// Генерация случайного токена
-func generateToken() string {
-	b := make([]byte, 16)
-	rand.Read(b)
 	return hex.EncodeToString(b)
 }
 
-// Создание ссылки для доступа
-func createShareLinkHandler(w http.ResponseWriter, r *http.Request) {
-	uid := r.Header.Get("X-User-UID")
-	if uid == "" {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
+func generateJWT(uid string) (string, error) {
+	claims := jwt.MapClaims{
+		"uid": uid,
+		"exp": time.Now().Add(TokenDuration).Unix(),
+		"iat": time.Now().Unix(),
 	}
-
-	var req struct {
-		Path       string `json:"path"`
-		Permission string `json:"permission"`
-		ExpiresIn  int    `json:"expiresIn"`
-	}
-
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(Response{Success: false, Error: "Неверный запрос"})
-		return
-	}
-
-	// Проверяем существование папки/файла
-	var fullPath string
-	if req.Path == "/" || req.Path == "" {
-		fullPath = filepath.Join("uploads", uid)
-	} else {
-		// Убираем ведущий слеш и создаем полный путь
-		cleanPath := strings.TrimPrefix(req.Path, "/")
-		fullPath = filepath.Join("uploads", uid, cleanPath)
-	}
-
-	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(Response{Success: false, Error: "Путь не найден"})
-		return
-	}
-
-	// Устанавливаем время жизни (по умолчанию 24 часа)
-	expiresIn := req.ExpiresIn
-	if expiresIn <= 0 {
-		expiresIn = 24
-	}
-
-	// Генерируем токен
-	token := generateToken()
-	
-	shareLink := ShareLink{
-		ID:         generateToken()[:8],
-		Path:       req.Path,
-		OwnerUID:   uid,
-		CreatedAt:  time.Now(),
-		ExpiresAt:  time.Now().Add(time.Duration(expiresIn) * time.Hour),
-		Permission: req.Permission,
-		Token:      token,
-	}
-
-	linksMutex.Lock()
-	shareLinks[token] = shareLink
-	linksMutex.Unlock()
-
-	// Формируем ссылку
-	shareURL := fmt.Sprintf("http://%s/shared?token=%s", r.Host, token)
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(Response{
-		Success: true,
-		Data: map[string]interface{}{
-			"id":         shareLink.ID,
-			"url":        shareURL,
-			"token":      token,
-			"path":       req.Path,
-			"permission": req.Permission,
-			"expiresAt":  shareLink.ExpiresAt,
-		},
-	})
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString([]byte(JWTSecret))
 }
 
-// Получение списка активных ссылок
-func listShareLinksHandler(w http.ResponseWriter, r *http.Request) {
-	uid := r.Header.Get("X-User-UID")
-	if uid == "" {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
+func getSafePath(uid, requestedPath string) (string, error) {
+	cleanPath := filepath.Clean("/" + strings.TrimPrefix(requestedPath, "/"))
+	if strings.HasPrefix(cleanPath, "..") || strings.Contains(cleanPath, "../") {
+		return "", fmt.Errorf("invalid path")
 	}
+	return filepath.Join(UploadsDir, uid, cleanPath[1:]), nil
+}
 
-	linksMutex.RLock()
-	defer linksMutex.RUnlock()
-
-	var userLinks []map[string]interface{}
-	now := time.Now()
-
-	for _, link := range shareLinks {
-		if link.OwnerUID == uid && now.Before(link.ExpiresAt) {
-			userLinks = append(userLinks, map[string]interface{}{
-				"id":         link.ID,
-				"path":       link.Path,
-				"permission": link.Permission,
-				"expiresAt":  link.ExpiresAt,
-				"token":      link.Token,
-				"url":        fmt.Sprintf("http://%s/shared?token=%s", r.Host, link.Token),
-			})
+func calculateDirSize(dir string) (int64, error) {
+	var size int64
+	err := filepath.Walk(dir, func(_ string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
 		}
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(Response{
-		Success: true,
-		Data:    userLinks,
+		if !info.IsDir() {
+			size += info.Size()
+		}
+		return nil
 	})
+	return size, err
 }
 
-// Удаление ссылки
-func deleteShareLinkHandler(w http.ResponseWriter, r *http.Request) {
-	uid := r.Header.Get("X-User-UID")
-	if uid == "" {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
+func jsonResponse(w http.ResponseWriter, resp Response, status int) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	err := json.NewEncoder(w).Encode(resp)
+	if err != nil {
+		log.Printf("Error encoding response: %v", err)
 	}
+}
 
-	vars := mux.Vars(r)
-	linkID := vars["id"]
-
-	linksMutex.Lock()
-	defer linksMutex.Unlock()
-
-	for token, link := range shareLinks {
-		if link.ID == linkID && link.OwnerUID == uid {
-			delete(shareLinks, token)
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(Response{Success: true, Message: "Ссылка удалена"})
+func authMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		tokenStr := r.Header.Get("Authorization")
+		if tokenStr == "" || !strings.HasPrefix(tokenStr, "Bearer ") {
+			jsonResponse(w, Response{Success: false, Error: "Unauthorized"}, http.StatusUnauthorized)
 			return
 		}
-	}
+		tokenStr = strings.TrimPrefix(tokenStr, "Bearer ")
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(Response{Success: false, Error: "Ссылка не найдена"})
+		token, err := jwt.Parse(tokenStr, func(token *jwt.Token) (interface{}, error) {
+			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+			}
+			return []byte(JWTSecret), nil
+		})
+		if err != nil || !token.Valid {
+			jsonResponse(w, Response{Success: false, Error: "Invalid token"}, http.StatusUnauthorized)
+			return
+		}
+
+		claims, ok := token.Claims.(jwt.MapClaims)
+		if !ok {
+			jsonResponse(w, Response{Success: false, Error: "Invalid claims"}, http.StatusUnauthorized)
+			return
+		}
+
+		uid, ok := claims["uid"].(string)
+		if !ok {
+			jsonResponse(w, Response{Success: false, Error: "Invalid user"}, http.StatusUnauthorized)
+			return
+		}
+
+		ctx := r.Context()
+		ctx = context.WithValue(ctx, "uid", uid)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
 }
 
-// Получение списка файлов и папок
-func listFilesHandler(w http.ResponseWriter, r *http.Request) {
-	uid := r.Header.Get("X-User-UID")
-	if uid == "" {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+func registerHandler(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+		Name     string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonResponse(w, Response{Success: false, Error: "Invalid request"}, http.StatusBadRequest)
 		return
 	}
 
+	if req.Email == "" || req.Password == "" {
+		jsonResponse(w, Response{Success: false, Error: "Email and password required"}, http.StatusBadRequest)
+		return
+	}
+
+	mu.Lock()
+	if _, exists := users[req.Email]; exists {
+		mu.Unlock()
+		jsonResponse(w, Response{Success: false, Error: "User already exists"}, http.StatusConflict)
+		return
+	}
+	uid := generateToken(16)
+	users[req.Email] = User{
+		UID:      uid,
+		Email:    req.Email,
+		Password: req.Password, // TODO: hash with bcrypt
+	}
+	mu.Unlock()
+
+	token, err := generateJWT(uid)
+	if err != nil {
+		jsonResponse(w, Response{Success: false, Error: "Failed to generate token"}, http.StatusInternalServerError)
+		return
+	}
+	jsonResponse(w, Response{
+		Success: true,
+		Data: map[string]string{"token": token, "uid": uid},
+	}, http.StatusCreated)
+}
+
+func loginHandler(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonResponse(w, Response{Success: false, Error: "Invalid request"}, http.StatusBadRequest)
+		return
+	}
+
+	mu.RLock()
+	user, exists := users[req.Email]
+	mu.RUnlock()
+
+	if !exists || user.Password != req.Password {
+		jsonResponse(w, Response{Success: false, Error: "Invalid credentials"}, http.StatusUnauthorized)
+		return
+	}
+
+	token, err := generateJWT(user.UID)
+	if err != nil {
+		jsonResponse(w, Response{Success: false, Error: "Failed to generate token"}, http.StatusInternalServerError)
+		return
+	}
+	jsonResponse(w, Response{
+		Success: true,
+		Data: map[string]string{"token": token, "uid": user.UID},
+	}, http.StatusOK)
+}
+
+func listFilesHandler(w http.ResponseWriter, r *http.Request) {
+	uid := r.Context().Value("uid").(string)
 	path := r.URL.Query().Get("path")
 	if path == "" {
 		path = "/"
 	}
 
-	// Проверяем токен доступа
-	shareToken := r.URL.Query().Get("token")
-	var ownerUID string
-	var basePath string
+	fullPath, err := getSafePath(uid, path)
+	if err != nil {
+		jsonResponse(w, Response{Success: false, Error: "Invalid path"}, http.StatusBadRequest)
+		return
+	}
 
-	if shareToken != "" {
-		linksMutex.RLock()
-		link, exists := shareLinks[shareToken]
-		linksMutex.RUnlock()
-
-		if !exists || time.Now().After(link.ExpiresAt) {
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(Response{Success: false, Error: "Ссылка недействительна"})
+	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
+		err := os.MkdirAll(fullPath, 0755)
+		if err != nil {
+			jsonResponse(w, Response{Success: false, Error: "Failed to create directory"}, http.StatusInternalServerError)
 			return
 		}
-
-		ownerUID = link.OwnerUID
-		basePath = link.Path
-	} else {
-		ownerUID = uid
-		basePath = path
-	}
-
-	// Формируем полный путь к папке
-	var fullPath string
-	if basePath == "/" || basePath == "" {
-		fullPath = filepath.Join("uploads", ownerUID)
-	} else {
-		// Убираем ведущий слеш и создаем путь
-		cleanPath := strings.TrimPrefix(basePath, "/")
-		fullPath = filepath.Join("uploads", ownerUID, cleanPath)
-	}
-	
-	// Проверяем существование папки
-	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
-		// Если папки нет, создаем её (только для владельца)
-		if shareToken == "" {
-			os.MkdirAll(fullPath, os.ModePerm)
-		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(Response{Success: true, Data: []FileInfo{}})
+		jsonResponse(w, Response{Success: true, Data: []FileInfo{}}, http.StatusOK)
 		return
 	}
 
-	files, err := os.ReadDir(fullPath)
+	entries, err := os.ReadDir(fullPath)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(Response{Success: false, Error: "Ошибка чтения папки"})
+		jsonResponse(w, Response{Success: false, Error: "Cannot read directory"}, http.StatusInternalServerError)
 		return
 	}
 
-	var fileList []FileInfo
-	for _, f := range files {
-		info, _ := f.Info()
-		
-		// Формируем путь для клиента
-		var clientPath string
-		if basePath == "/" {
-			clientPath = "/" + f.Name()
-		} else {
-			clientPath = basePath + "/" + f.Name()
+	var files []FileInfo
+	for _, entry := range entries {
+		info, err := entry.Info()
+		if err != nil {
+			continue
 		}
-		
-		fileList = append(fileList, FileInfo{
-			Name:     f.Name(),
-			Path:     clientPath,
+		relPath := filepath.Join(path, entry.Name())
+		if path == "/" {
+			relPath = "/" + entry.Name()
+		}
+		files = append(files, FileInfo{
+			Name:     entry.Name(),
+			Path:     relPath,
 			Size:     info.Size(),
-			IsDir:    f.IsDir(),
+			IsDir:    entry.IsDir(),
 			Modified: info.ModTime(),
 		})
 	}
 
-	// Добавляем информацию о режиме доступа
-	if shareToken != "" {
-		linksMutex.RLock()
-		link, _ := shareLinks[shareToken]
-		linksMutex.RUnlock()
-		w.Header().Set("X-Access-Permission", link.Permission)
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(Response{Success: true, Data: fileList})
+	jsonResponse(w, Response{Success: true, Data: files}, http.StatusOK)
 }
 
-// Загрузка файла
 func uploadHandler(w http.ResponseWriter, r *http.Request) {
-	uid := r.Header.Get("X-User-UID")
-	if uid == "" {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
-
+	uid := r.Context().Value("uid").(string)
 	path := r.URL.Query().Get("path")
 	if path == "" {
 		path = "/"
 	}
 
-	// Проверяем токен доступа
-	shareToken := r.URL.Query().Get("token")
-	var ownerUID string
-	var basePath string
-
-	if shareToken != "" {
-		linksMutex.RLock()
-		link, exists := shareLinks[shareToken]
-		linksMutex.RUnlock()
-
-		if !exists || time.Now().After(link.ExpiresAt) {
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(Response{Success: false, Error: "Ссылка недействительна"})
-			return
-		}
-
-		if link.Permission != "write" {
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(Response{Success: false, Error: "Нет прав на запись"})
-			return
-		}
-
-		ownerUID = link.OwnerUID
-		basePath = link.Path
-	} else {
-		ownerUID = uid
-		basePath = path
+	fullPath, err := getSafePath(uid, path)
+	if err != nil {
+		jsonResponse(w, Response{Success: false, Error: "Invalid path"}, http.StatusBadRequest)
+		return
 	}
 
-	// Максимальный размер 100 MB
-	err := r.ParseMultipartForm(100 << 20)
+	err = r.ParseMultipartForm(MaxFileSize)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(Response{Success: false, Error: "Файл слишком большой"})
+		jsonResponse(w, Response{Success: false, Error: "File too large"}, http.StatusBadRequest)
 		return
 	}
 
 	files := r.MultipartForm.File["file"]
 	if len(files) == 0 {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(Response{Success: false, Error: "Нет файлов для загрузки"})
+		jsonResponse(w, Response{Success: false, Error: "No files uploaded"}, http.StatusBadRequest)
 		return
 	}
 
-	// Формируем путь назначения
-	var destDir string
-	if basePath == "/" || basePath == "" {
-		destDir = filepath.Join("uploads", ownerUID)
-	} else {
-		cleanPath := strings.TrimPrefix(basePath, "/")
-		destDir = filepath.Join("uploads", ownerUID, cleanPath)
-	}
+	os.MkdirAll(fullPath, 0755)
 
-	// Создаем папку назначения
-	os.MkdirAll(destDir, os.ModePerm)
-
-	var uploadedFiles []map[string]string
-
-	for _, fileHeader := range files {
-		file, err := fileHeader.Open()
+	var uploaded []string
+	for _, fh := range files {
+		f, err := fh.Open()
 		if err != nil {
+			log.Printf("Failed to open file: %v", err)
 			continue
 		}
-		defer file.Close()
+		defer f.Close()
 
-		// Сохраняем файл с оригинальным именем
-		fileName := fileHeader.Filename
-		filePath := filepath.Join(destDir, fileName)
-		
-		// Если файл уже существует, добавляем число к имени
-		if _, err := os.Stat(filePath); err == nil {
-			ext := filepath.Ext(fileName)
-			nameWithoutExt := strings.TrimSuffix(fileName, ext)
+		destFile := filepath.Join(fullPath, fh.Filename)
+		// Handle existing file (add counter)
+		if _, err := os.Stat(destFile); err == nil {
+			ext := filepath.Ext(fh.Filename)
+			base := strings.TrimSuffix(fh.Filename, ext)
 			counter := 1
 			for {
-				newName := fmt.Sprintf("%s (%d)%s", nameWithoutExt, counter, ext)
-				filePath = filepath.Join(destDir, newName)
-				if _, err := os.Stat(filePath); os.IsNotExist(err) {
-					fileName = newName
+				newName := fmt.Sprintf("%s (%d)%s", base, counter, ext)
+				newPath := filepath.Join(fullPath, newName)
+				if _, err := os.Stat(newPath); os.IsNotExist(err) {
+					destFile = newPath
 					break
 				}
 				counter++
 			}
 		}
-		
-		dst, err := os.Create(filePath)
+
+		dst, err := os.Create(destFile)
 		if err != nil {
+			log.Printf("Failed to create file: %v", err)
 			continue
 		}
-		
-		_, err = io.Copy(dst, file)
-		dst.Close()
-		
+		defer dst.Close()
+
+		_, err = io.Copy(dst, f)
 		if err != nil {
+			log.Printf("Failed to copy file: %v", err)
 			continue
 		}
 
-		// Формируем путь для ответа
-		var responsePath string
-		if basePath == "/" {
-			responsePath = "/" + fileName
-		} else {
-			responsePath = basePath + "/" + fileName
-		}
-
-		uploadedFiles = append(uploadedFiles, map[string]string{
-			"name": fileName,
-			"path": responsePath,
-		})
+		uploaded = append(uploaded, fh.Filename)
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(Response{
-		Success: true,
-		Message: fmt.Sprintf("Загружено файлов: %d", len(uploadedFiles)),
-		Data:    uploadedFiles,
-	})
+	jsonResponse(w, Response{Success: true, Message: fmt.Sprintf("Uploaded %d files", len(uploaded)), Data: uploaded}, http.StatusOK)
 }
 
-// Создание папки
-func mkdirHandler(w http.ResponseWriter, r *http.Request) {
-	uid := r.Header.Get("X-User-UID")
-	if uid == "" {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
-	
-	var req struct {
-		Path  string `json:"path"`
-		Name  string `json:"name"`
-		Token string `json:"token"`
-	}
-	
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(Response{Success: false, Error: "Неверный запрос"})
-		return
-	}
-
-	// Проверяем права доступа
-	var ownerUID string
-	var basePath string
-
-	if req.Token != "" {
-		linksMutex.RLock()
-		link, exists := shareLinks[req.Token]
-		linksMutex.RUnlock()
-
-		if !exists || time.Now().After(link.ExpiresAt) {
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(Response{Success: false, Error: "Ссылка недействительна"})
-			return
-		}
-
-		if link.Permission != "write" {
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(Response{Success: false, Error: "Нет прав на запись"})
-			return
-		}
-
-		ownerUID = link.OwnerUID
-		basePath = link.Path
-	} else {
-		ownerUID = uid
-		basePath = req.Path
-	}
-
-	// Проверяем имя папки
-	if req.Name == "" || strings.ContainsAny(req.Name, "/\\:*?\"<>|") {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(Response{Success: false, Error: "Некорректное имя папки"})
-		return
-	}
-
-	// Формируем путь для новой папки
-	var folderPath string
-	if basePath == "/" || basePath == "" {
-		folderPath = filepath.Join("uploads", ownerUID, req.Name)
-	} else {
-		cleanPath := strings.TrimPrefix(basePath, "/")
-		folderPath = filepath.Join("uploads", ownerUID, cleanPath, req.Name)
-	}
-	
-	// Проверяем, не существует ли уже такая папка
-	if _, err := os.Stat(folderPath); err == nil {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(Response{Success: false, Error: "Папка уже существует"})
-		return
-	}
-
-	if err := os.MkdirAll(folderPath, os.ModePerm); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(Response{Success: false, Error: "Ошибка создания папки"})
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(Response{Success: true, Message: "Папка создана"})
-}
-
-// Удаление файла или папки
-func deleteHandler(w http.ResponseWriter, r *http.Request) {
-	uid := r.Header.Get("X-User-UID")
-	if uid == "" {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
-
-	// Получаем путь из URL
-	fullPath := strings.TrimPrefix(r.URL.Path, "/api/delete/")
-	if fullPath == "" {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(Response{Success: false, Error: "Путь не указан"})
-		return
-	}
-
-	// Проверяем токен доступа
-	shareToken := r.URL.Query().Get("token")
-	var ownerUID string
-
-	if shareToken != "" {
-		linksMutex.RLock()
-		link, exists := shareLinks[shareToken]
-		linksMutex.RUnlock()
-
-		if !exists || time.Now().After(link.ExpiresAt) {
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(Response{Success: false, Error: "Ссылка недействительна"})
-			return
-		}
-
-		if link.Permission != "write" {
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(Response{Success: false, Error: "Нет прав на удаление"})
-			return
-		}
-
-		ownerUID = link.OwnerUID
-	} else {
-		ownerUID = uid
-	}
-
-	// Убираем ведущий слеш
-	cleanPath := strings.TrimPrefix(fullPath, "/")
-	
-	// Проверяем, не пытается ли пользователь удалить корневую папку
-	if cleanPath == "" {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(Response{Success: false, Error: "Нельзя удалить корневую папку"})
-		return
-	}
-	
-	deletePath := filepath.Join("uploads", ownerUID, cleanPath)
-	
-	// Проверяем, существует ли файл/папка
-	if _, err := os.Stat(deletePath); os.IsNotExist(err) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(Response{Success: false, Error: "Файл или папка не найдены"})
-		return
-	}
-	
-	// Удаляем
-	if err := os.RemoveAll(deletePath); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(Response{Success: false, Error: "Ошибка удаления"})
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(Response{Success: true, Message: "Удалено"})
-}
-
-// Скачивание файла
 func downloadHandler(w http.ResponseWriter, r *http.Request) {
-	uid := r.URL.Query().Get("uid")
-	if uid == "" {
-		uid = r.Header.Get("X-User-UID")
-	}
-	
-	shareToken := r.URL.Query().Get("token")
-	
-	var ownerUID string
-
-	if shareToken != "" {
-		linksMutex.RLock()
-		link, exists := shareLinks[shareToken]
-		linksMutex.RUnlock()
-
-		if !exists || time.Now().After(link.ExpiresAt) {
-			http.Error(w, "Ссылка недействительна", http.StatusForbidden)
-			return
-		}
-
-		ownerUID = link.OwnerUID
-	} else {
-		if uid == "" {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
-		}
-		ownerUID = uid
-	}
-
-	fullPath := strings.TrimPrefix(r.URL.Path, "/api/download/")
-	if fullPath == "" {
-		http.Error(w, "Путь не указан", http.StatusBadRequest)
+	uid := r.Context().Value("uid").(string)
+	vars := mux.Vars(r)
+	path := vars["path"]
+	if path == "" {
+		jsonResponse(w, Response{Success: false, Error: "Path required"}, http.StatusBadRequest)
 		return
 	}
 
-	// Убираем ведущий слеш
-	cleanPath := strings.TrimPrefix(fullPath, "/")
-	
-	filePath := filepath.Join("uploads", ownerUID, cleanPath)
-	
-	// Проверяем, что это файл, а не папка
-	fileInfo, err := os.Stat(filePath)
+	fullPath, err := getSafePath(uid, path)
 	if err != nil {
-		if os.IsNotExist(err) {
-			http.Error(w, "Файл не найден", http.StatusNotFound)
-		} else {
-			http.Error(w, "Ошибка доступа к файлу", http.StatusInternalServerError)
-		}
+		jsonResponse(w, Response{Success: false, Error: "Invalid path"}, http.StatusBadRequest)
 		return
 	}
-	
-	if fileInfo.IsDir() {
-		http.Error(w, "Нельзя скачать папку", http.StatusBadRequest)
+
+	info, err := os.Stat(fullPath)
+	if err != nil {
+		jsonResponse(w, Response{Success: false, Error: "File not found"}, http.StatusNotFound)
 		return
 	}
-	
-	// Устанавливаем заголовки для скачивания
-	w.Header().Set("Content-Disposition", "attachment; filename=\""+filepath.Base(filePath)+"\"")
+	if info.IsDir() {
+		jsonResponse(w, Response{Success: false, Error: "Cannot download directory"}, http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Disposition", "attachment; filename="+filepath.Base(fullPath))
 	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Header().Set("Content-Length", fmt.Sprintf("%d", fileInfo.Size()))
-	
-	http.ServeFile(w, r, filePath)
+	w.Header().Set("Content-Length", fmt.Sprintf("%d", info.Size()))
+	http.ServeFile(w, r, fullPath)
 }
 
-// Информация о месте
-func spaceHandler(w http.ResponseWriter, r *http.Request) {
-	uid := r.Header.Get("X-User-UID")
-	if uid == "" {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+func deleteHandler(w http.ResponseWriter, r *http.Request) {
+	uid := r.Context().Value("uid").(string)
+	vars := mux.Vars(r)
+	path := vars["path"]
+	if path == "" {
+		jsonResponse(w, Response{Success: false, Error: "Path required"}, http.StatusBadRequest)
 		return
 	}
-	
-	userPath := filepath.Join("uploads", uid)
-	
-	if _, err := os.Stat(userPath); os.IsNotExist(err) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(Response{
-			Success: true,
-			Data: SpaceInfo{
-				Used:    0,
-				Max:     500 * 1024 * 1024,
-				UsedGB:  0,
-				MaxGB:   0.5,
-				Percent: 0,
-			},
-		})
-		return
-	}
-	
-	var totalSize int64
-	err := filepath.Walk(userPath, func(_ string, info os.FileInfo, err error) error {
-		if err == nil && !info.IsDir() {
-			totalSize += info.Size()
-		}
-		return nil
-	})
-	
+
+	fullPath, err := getSafePath(uid, path)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(Response{Success: false, Error: "Ошибка подсчета места"})
+		jsonResponse(w, Response{Success: false, Error: "Invalid path"}, http.StatusBadRequest)
 		return
 	}
 
-	maxSize := int64(500 * 1024 * 1024)
-	percent := float64(totalSize) / float64(maxSize) * 100
+	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
+		jsonResponse(w, Response{Success: false, Error: "Not found"}, http.StatusNotFound)
+		return
+	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(Response{
+	err = os.RemoveAll(fullPath)
+	if err != nil {
+		jsonResponse(w, Response{Success: false, Error: "Failed to delete"}, http.StatusInternalServerError)
+		return
+	}
+
+	jsonResponse(w, Response{Success: true, Message: "Deleted"}, http.StatusOK)
+}
+
+func mkdirHandler(w http.ResponseWriter, r *http.Request) {
+	uid := r.Context().Value("uid").(string)
+	var req struct {
+		Path string `json:"path"`
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonResponse(w, Response{Success: false, Error: "Invalid request"}, http.StatusBadRequest)
+		return
+	}
+
+	basePath, err := getSafePath(uid, req.Path)
+	if err != nil {
+		jsonResponse(w, Response{Success: false, Error: "Invalid base path"}, http.StatusBadRequest)
+		return
+	}
+
+	fullPath := filepath.Join(basePath, req.Name)
+	if _, err := os.Stat(fullPath); err == nil {
+		jsonResponse(w, Response{Success: false, Error: "Directory already exists"}, http.StatusConflict)
+		return
+	}
+
+	err = os.MkdirAll(fullPath, 0755)
+	if err != nil {
+		jsonResponse(w, Response{Success: false, Error: "Failed to create directory"}, http.StatusInternalServerError)
+		return
+	}
+
+	jsonResponse(w, Response{Success: true, Message: "Directory created"}, http.StatusCreated)
+}
+
+func spaceHandler(w http.ResponseWriter, r *http.Request) {
+	uid := r.Context().Value("uid").(string)
+	userDir := filepath.Join(UploadsDir, uid)
+
+	if _, err := os.Stat(userDir); os.IsNotExist(err) {
+		jsonResponse(w, Response{Success: true, Data: SpaceInfo{
+			Used:    0,
+			Max:     DefaultMaxSize,
+			UsedGB:  0,
+			MaxGB:   float64(DefaultMaxSize) / (1024 * 1024 * 1024),
+			Percent: 0,
+		}}, http.StatusOK)
+		return
+	}
+
+	used, err := calculateDirSize(userDir)
+	if err != nil {
+		jsonResponse(w, Response{Success: false, Error: "Failed to calculate space"}, http.StatusInternalServerError)
+		return
+	}
+
+	percent := float64(used) / float64(DefaultMaxSize) * 100
+	jsonResponse(w, Response{Success: true, Data: SpaceInfo{
+		Used:    used,
+		Max:     DefaultMaxSize,
+		UsedGB:  float64(used) / (1024 * 1024 * 1024),
+		MaxGB:   float64(DefaultMaxSize) / (1024 * 1024 * 1024),
+		Percent: percent,
+	}}, http.StatusOK)
+}
+
+func createShareLinkHandler(w http.ResponseWriter, r *http.Request) {
+	uid := r.Context().Value("uid").(string)
+	var req struct {
+		Path       string `json:"path"`
+		Permission string `json:"permission"`
+		ExpiresIn  int    `json:"expiresIn"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonResponse(w, Response{Success: false, Error: "Invalid request"}, http.StatusBadRequest)
+		return
+	}
+
+	fullPath, err := getSafePath(uid, req.Path)
+	if err != nil {
+		jsonResponse(w, Response{Success: false, Error: "Invalid path"}, http.StatusBadRequest)
+		return
+	}
+
+	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
+		jsonResponse(w, Response{Success: false, Error: "Path not found"}, http.StatusNotFound)
+		return
+	}
+
+	expiresIn := time.Duration(req.ExpiresIn) * time.Hour
+	if expiresIn <= 0 {
+		expiresIn = 24 * time.Hour
+	}
+
+	token := generateToken(32)
+	linkID := generateToken(8)
+
+	mu.Lock()
+	shareLinks[token] = ShareLink{
+		ID:         linkID,
+		Path:       req.Path,
+		OwnerUID:   uid,
+		CreatedAt:  time.Now(),
+		ExpiresAt:  time.Now().Add(expiresIn),
+		Permission: req.Permission,
+		Token:      token,
+	}
+	mu.Unlock()
+
+	shareURL := fmt.Sprintf("http://%s/shared?token=%s", r.Host, token)
+	jsonResponse(w, Response{
 		Success: true,
-		Data: SpaceInfo{
-			Used:    totalSize,
-			Max:     maxSize,
-			UsedGB:  float64(totalSize) / (1024 * 1024 * 1024),
-			MaxGB:   0.5,
-			Percent: percent,
+		Data: map[string]interface{}{
+			"id":         linkID,
+			"url":        shareURL,
+			"token":      token,
+			"path":       req.Path,
+			"permission": req.Permission,
+			"expiresAt":  shareLinks[token].ExpiresAt,
 		},
+	}, http.StatusCreated)
+}
+
+func listShareLinksHandler(w http.ResponseWriter, r *http.Request) {
+	uid := r.Context().Value("uid").(string)
+	mu.RLock()
+	defer mu.RUnlock()
+
+	var links []ShareLink
+	now := time.Now()
+	for _, link := range shareLinks {
+		if link.OwnerUID == uid && now.Before(link.ExpiresAt) {
+			links = append(links, link)
+		}
+	}
+
+	jsonResponse(w, Response{Success: true, Data: links}, http.StatusOK)
+}
+
+func deleteShareLinkHandler(w http.ResponseWriter, r *http.Request) {
+	uid := r.Context().Value("uid").(string)
+	vars := mux.Vars(r)
+	linkID := vars["id"]
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	for token, link := range shareLinks {
+		if link.ID == linkID && link.OwnerUID == uid {
+			delete(shareLinks, token)
+			jsonResponse(w, Response{Success: true, Message: "Share link deleted"}, http.StatusOK)
+			return
+		}
+	}
+
+	jsonResponse(w, Response{Success: false, Error: "Share link not found"}, http.StatusNotFound)
+}
+
+func serveStatic(w http.ResponseWriter, r *http.Request) {
+	http.FileServer(http.Dir("static")).ServeHTTP(w, r)
+}
+
+func main() {
+	os.MkdirAll(UploadsDir, 0755)
+
+	r := mux.NewRouter()
+
+	c := cors.New(cors.Options{
+		AllowedOrigins:   []string{"*"},
+		AllowedMethods:   []string{"GET", "POST", "DELETE", "PUT", "OPTIONS"},
+		AllowedHeaders:   []string{"Authorization", "Content-Type"},
+		AllowCredentials: true,
 	})
+
+	r.HandleFunc("/api/register", registerHandler).Methods("POST")
+	r.HandleFunc("/api/login", loginHandler).Methods("POST")
+
+	protected := r.PathPrefix("/api").Subrouter()
+	protected.Use(authMiddleware)
+
+	protected.HandleFunc("/files", listFilesHandler).Methods("GET")
+	protected.HandleFunc("/upload", uploadHandler).Methods("POST")
+	protected.HandleFunc("/download/{path:.*}", downloadHandler).Methods("GET")
+	protected.HandleFunc("/delete/{path:.*}", deleteHandler).Methods("DELETE")
+	protected.HandleFunc("/mkdir", mkdirHandler).Methods("POST")
+	protected.HandleFunc("/space", spaceHandler).Methods("GET")
+	protected.HandleFunc("/share/create", createShareLinkHandler).Methods("POST")
+	protected.HandleFunc("/share/list", listShareLinksHandler).Methods("GET")
+	protected.HandleFunc("/share/delete/{id}", deleteShareLinkHandler).Methods("DELETE")
+
+	r.PathPrefix("/").HandlerFunc(serveStatic)
+
+	log.Printf("Server starting on %s", Port)
+	log.Fatal(http.ListenAndServe(Port, c.Handler(r)))
 }
